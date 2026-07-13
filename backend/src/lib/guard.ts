@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { projects, entries } from "../db/schema";
+import { projects, entries, boards } from "../db/schema";
 
 /** Erro com statusCode para o error handler global. */
 export function httpError(statusCode: number, message: string) {
@@ -27,4 +27,15 @@ export async function requireEntry(userId: string, entryId: string) {
     .where(and(eq(entries.id, entryId), eq(entries.userId, userId)));
   if (!e) throw httpError(404, "entry_not_found");
   return e;
+}
+
+/** Retorna o board se pertencer ao usuário (via projeto), senão lança 404. */
+export async function requireBoard(userId: string, boardId: string) {
+  const [row] = await db
+    .select({ board: boards })
+    .from(boards)
+    .innerJoin(projects, eq(boards.projectId, projects.id))
+    .where(and(eq(boards.id, boardId), eq(projects.userId, userId)));
+  if (!row) throw httpError(404, "board_not_found");
+  return row.board;
 }

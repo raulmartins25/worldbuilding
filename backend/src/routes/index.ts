@@ -6,6 +6,7 @@ import { membershipRoutes } from "./memberships";
 import { relationshipRoutes } from "./relationships";
 import { attributeRoutes } from "./attributes";
 import { tagRoutes } from "./tags";
+import { boardRoutes } from "./boards";
 
 export async function registerRoutes(app: FastifyInstance) {
   app.register(authRoutes, { prefix: "/auth" });
@@ -15,4 +16,5 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(relationshipRoutes);
   app.register(attributeRoutes);
   app.register(tagRoutes);
+  app.register(boardRoutes);
 }
