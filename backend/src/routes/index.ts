@@ -1,0 +1,18 @@
+import type { FastifyInstance } from "fastify";
+import { authRoutes } from "./auth";
+import { projectRoutes } from "./projects";
+import { entryRoutes } from "./entries";
+import { membershipRoutes } from "./memberships";
+import { relationshipRoutes } from "./relationships";
+import { attributeRoutes } from "./attributes";
+import { tagRoutes } from "./tags";
+
+export async function registerRoutes(app: FastifyInstance) {
+  app.register(authRoutes, { prefix: "/auth" });
+  app.register(projectRoutes);
+  app.register(entryRoutes);
+  app.register(membershipRoutes);
+  app.register(relationshipRoutes);
+  app.register(attributeRoutes);
+  app.register(tagRoutes);
+}

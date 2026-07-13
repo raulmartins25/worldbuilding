@@ -1,0 +1,19 @@
+{
+  "name": "worldbuilding",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Loregrid — worldbuilding OS para escritores de fantasia (canvas infinito, mapa, timeline e IA).",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "build": "npm --workspace backend run build && npm --workspace frontend run build",
+    "db:migrate": "npm --workspace backend run db:migrate"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
