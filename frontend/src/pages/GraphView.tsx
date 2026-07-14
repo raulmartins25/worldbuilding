@@ -15,7 +15,8 @@ const GEN = new Set(["pai_de", "mae_de", "filho_de", "casado_com"]);
 
 // layout força-dirigida (Fruchterman–Reingold simplificado)
 function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number; y: number }> {
-  const n = ids.length || 1;
+  if (ids.length === 0) return {};
+  const n = ids.length;
   const W = 1000, H = 680;
   const k = Math.sqrt((W * H) / n);
   const idx: Record<string, number> = Object.fromEntries(ids.map((id, i) => [id, i]));

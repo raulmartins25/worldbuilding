@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import type { Project } from "../lib/types";
+import { ErrorBoundary } from "../lib/ErrorBoundary";
 import { CanvasView } from "./CanvasView";
 import { EntriesView } from "./EntriesView";
 import { GraphView } from "./GraphView";
@@ -30,6 +31,7 @@ function Placeholder({ title }: { title: string }) {
 export function WorldShell() {
   const { pid } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [project, setProject] = useState<Project | null>(null);
 
   useEffect(() => {
@@ -66,6 +68,7 @@ export function WorldShell() {
       </aside>
 
       <main style={{ minWidth: 0, position: "relative" }}>
+        <ErrorBoundary key={location.pathname}>
         <Routes>
           <Route index element={<CanvasView projectId={pid!} />} />
           <Route path="entries" element={<EntriesView projectId={pid!} />} />
@@ -74,6 +77,7 @@ export function WorldShell() {
           <Route path="graph" element={<GraphView projectId={pid!} />} />
           <Route path="ia" element={<AIView projectId={pid!} />} />
         </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );
