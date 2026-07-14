@@ -5,6 +5,7 @@ import type { Project } from "../lib/types";
 import { CanvasView } from "./CanvasView";
 import { EntriesView } from "./EntriesView";
 import { GraphView } from "./GraphView";
+import { AIView } from "./AIView";
 
 const NAV = [
   { to: "", label: "Canvas", end: true },
@@ -12,6 +13,7 @@ const NAV = [
   { to: "map", label: "Mapa" },
   { to: "timeline", label: "Timeline" },
   { to: "graph", label: "Grafo" },
+  { to: "ia", label: "IA" },
 ];
 
 function Placeholder({ title }: { title: string }) {
@@ -70,6 +72,7 @@ export function WorldShell() {
           <Route path="map" element={<Placeholder title="Mapa cartográfico" />} />
           <Route path="timeline" element={<Placeholder title="Linha do tempo" />} />
           <Route path="graph" element={<GraphView projectId={pid!} />} />
+          <Route path="ia" element={<AIView projectId={pid!} />} />
         </Routes>
       </main>
     </div>

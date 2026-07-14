@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { entries } from "../db/schema";
 import { requireEntry, requireProject } from "../lib/guard";
+import { embedEntry } from "../lib/embedding";
 
 const ENTRY_TYPES = [
   "character", "location", "region", "faction", "item", "magic_system",
@@ -68,6 +69,7 @@ export async function entryRoutes(app: FastifyInstance) {
         metadata: body.metadata ?? {},
       })
       .returning();
+    void embedEntry(entry.id).catch(() => {});
     return reply.code(201).send({ entry });
   });
 
@@ -100,6 +102,7 @@ export async function entryRoutes(app: FastifyInstance) {
     await requireEntry(req.user.sub, id);
     const body = updateBody.parse(req.body);
     const [entry] = await db.update(entries).set(body).where(eq(entries.id, id)).returning();
+    void embedEntry(entry.id).catch(() => {});
     return { entry };
   });
 
