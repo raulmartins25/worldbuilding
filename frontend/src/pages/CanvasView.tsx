@@ -6,6 +6,7 @@ import {
 } from "@xyflow/react";
 import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
+import { EntryDrawer } from "./EntryDrawer";
 
 interface BoardNode { id: string; entryId: string | null; kind: string; x: number; y: number; }
 interface BoardEdge { id: string; sourceNodeId: string; targetNodeId: string; label: string | null; }
@@ -27,7 +28,11 @@ const REL_TYPES: { t: string; c: string }[] = [
 const REL_COLORS: Record<string, string> = Object.fromEntries(REL_TYPES.map((r) => [r.t, r.c]));
 const edgeColor = (label: string | null | undefined) => REL_COLORS[label ?? ""] ?? "#6e7681";
 
-type CardData = { title: string; etype: string; entryId: string | null; onRename: (nodeId: string, entryId: string | null, title: string) => void };
+type CardData = {
+  title: string; etype: string; entryId: string | null;
+  onRename: (nodeId: string, entryId: string | null, title: string) => void;
+  onOpen: (entryId: string) => void;
+};
 
 function EntryCardNode({ id, data }: NodeProps) {
   const d = data as CardData;
@@ -41,9 +46,17 @@ function EntryCardNode({ id, data }: NodeProps) {
   return (
     <div
       onDoubleClick={() => setEditing(true)}
-      style={{ background: "var(--panel-2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", width: 190, boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}
+      style={{ background: "var(--panel-2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", width: 190, boxShadow: "0 2px 8px rgba(0,0,0,.25)", position: "relative" }}
     >
       <Handle type="target" position={Position.Left} />
+      {d.entryId && (
+        <button
+          className="nodrag"
+          onClick={(e) => { e.stopPropagation(); d.onOpen(d.entryId!); }}
+          title="abrir editor"
+          style={{ position: "absolute", top: 4, right: 4, padding: "0 6px", fontSize: 12, lineHeight: "18px", background: "transparent", border: "none", color: "var(--muted)" }}
+        >⤢</button>
+      )}
       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>{d.etype}</div>
       {editing ? (
         <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit}
@@ -64,6 +77,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const entryMap = useRef<Record<string, Entry>>({});
   const membersRef = useRef<Record<string, string[]>>({}); // containerEntryId -> memberEntryIds
@@ -82,7 +96,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
     const entry = bn.entryId ? entryMap.current[bn.entryId] : undefined;
     return {
       id: bn.id, type: "entryCard", position: { x: bn.x, y: bn.y },
-      data: { title: entry?.title ?? "(sem entry)", etype: entry?.type ?? bn.kind, entryId: bn.entryId, onRename: renameEntry } satisfies CardData,
+      data: { title: entry?.title ?? "(sem entry)", etype: entry?.type ?? bn.kind, entryId: bn.entryId, onRename: renameEntry, onOpen: setOpenId } satisfies CardData,
     };
   }, [renameEntry]);
 
@@ -265,6 +279,13 @@ export function CanvasView({ projectId }: { projectId: string }) {
         <Background />
         <Controls />
       </ReactFlow>
+
+      {openId && (
+        <EntryDrawer
+          entryId={openId}
+          onClose={() => { setOpenId(null); void load(); }}
+        />
+      )}
     </div>
   );
 }

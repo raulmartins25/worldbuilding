@@ -62,3 +62,27 @@ input, textarea, select {
 .row { display: flex; gap: 0.75rem; align-items: center; }
 .muted { color: var(--muted); }
 .grow { flex: 1; }
+
+/* editor Tiptap */
+.tiptap-wrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.tiptap-wrap .ProseMirror {
+  min-height: 220px;
+  padding: 10px 12px;
+  outline: none;
+  line-height: 1.5;
+}
+.tiptap-wrap .ProseMirror p { margin: 0 0 0.6em; }
+.tiptap-wrap .ProseMirror h2 { font-size: 1.2rem; margin: 0.4em 0; }
+.tiptap-wrap .ProseMirror ul { padding-left: 1.2em; }
+.tiptap-wrap .ProseMirror blockquote {
+  border-left: 3px solid var(--border);
+  margin: 0.4em 0; padding-left: 0.8em; color: var(--muted);
+}
+.tiptap-wrap .ProseMirror p.is-editor-empty:first-child::before {
+  content: "Escreva o conteúdo…";
+  color: var(--muted); float: left; height: 0; pointer-events: none;
+}
