@@ -7,6 +7,7 @@ import {
 import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
+import { EntryIcon } from "../lib/EntryIcon";
 import { EntryDrawer } from "./EntryDrawer";
 
 interface BoardNode { id: string; entryId: string | null; kind: string; x: number; y: number; }
@@ -58,7 +59,7 @@ function EntryCardNode({ id, data }: NodeProps) {
         >⤢</button>
       )}
       <div className="row" style={{ gap: 10, alignItems: "center" }}>
-        <span style={{ fontSize: 30, lineHeight: 1, filter: "saturate(1.1)" }}>{meta.icon}</span>
+        <EntryIcon type={d.etype} size={30} color={meta.color} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 11, color: meta.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>{meta.label}</div>
           {editing ? (

@@ -3,6 +3,7 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
+import { EntryIcon } from "../lib/EntryIcon";
 import { AttributesTab } from "./drawer/AttributesTab";
 import { TagsTab } from "./drawer/TagsTab";
 import { ReferencesTab } from "./drawer/ReferencesTab";
@@ -80,7 +81,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
   return (
     <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 440, zIndex: 20, background: "var(--panel)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", boxShadow: "-8px 0 24px rgba(0,0,0,.35)" }}>
       <div className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-        <span style={{ fontSize: 20 }}>{entry ? typeMeta(entry.type).icon : "…"}</span>
+        {entry && <EntryIcon type={entry.type} size={22} color={typeMeta(entry.type).color} />}
         <span className="muted grow" style={{ fontSize: 12 }}>{entry ? typeMeta(entry.type).label : ""} · {title}</span>
         <button onClick={onClose}>fechar</button>
       </div>

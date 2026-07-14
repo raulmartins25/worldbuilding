@@ -124,7 +124,7 @@ export function GraphView({ projectId }: { projectId: string }) {
       </div>
       {rfNodes.length === 0 && (
         <div className="muted" style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
-          {mode === "genealogy" ? "Sem relações genealógicas (pai_de / mae_de / casado_com)." : "Sem entries/relações ainda."}
+          {mode === "genealogy" ? "Sem relações genealógicas (Pai de / Mãe de / Casado com)." : "Sem fichas/relações ainda."}
         </div>
       )}
       <ReactFlow nodes={rfNodes} edges={rfEdges} fitView minZoom={0.1}>

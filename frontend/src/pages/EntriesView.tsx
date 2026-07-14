@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
 import { typeMeta, STATUS_LABEL } from "../lib/entryTypes";
+import { EntryIcon } from "../lib/EntryIcon";
 
 export function EntriesView({ projectId }: { projectId: string }) {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -52,7 +53,7 @@ export function EntriesView({ projectId }: { projectId: string }) {
           const m = typeMeta(en.type);
           return (
             <div key={en.id} className="card row" style={{ borderLeft: `4px solid ${m.color}` }}>
-              <span style={{ fontSize: 20 }}>{m.icon}</span>
+              <EntryIcon type={en.type} size={22} color={m.color} />
               <span className="muted" style={{ width: 130, fontSize: 13 }}>{m.label}</span>
               <strong className="grow">{en.title}</strong>
               <span className="muted" style={{ fontSize: 13 }}>{STATUS_LABEL[en.status] ?? en.status}</span>
