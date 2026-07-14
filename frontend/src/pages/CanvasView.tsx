@@ -283,6 +283,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
       {openId && (
         <EntryDrawer
           entryId={openId}
+          projectId={projectId}
           onClose={() => { setOpenId(null); void load(); }}
         />
       )}

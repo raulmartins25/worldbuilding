@@ -46,6 +46,18 @@ export async function tagRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
+  // tags anexadas a uma entry
+  app.get("/entries/:id/tags", async (req) => {
+    const { id } = req.params as { id: string };
+    await requireEntry(req.user.sub, id);
+    const rows = await db
+      .select({ id: tags.id, name: tags.name, color: tags.color })
+      .from(entryTags)
+      .innerJoin(tags, eq(entryTags.tagId, tags.id))
+      .where(eq(entryTags.entryId, id));
+    return { tags: rows };
+  });
+
   // anexar / desanexar tag de uma entry
   app.post("/entries/:id/tags", async (req, reply) => {
     const { id } = req.params as { id: string };
