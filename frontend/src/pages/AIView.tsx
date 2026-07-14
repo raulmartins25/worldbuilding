@@ -44,6 +44,12 @@ export function AIView({ projectId }: { projectId: string }) {
     await loadChecks();
   });
 
+  const suggest = () => run("suggest", async () => {
+    const r = await api.post<{ count: number }>(`/projects/${projectId}/ai/suggest-links`);
+    setMsg(`${r.count} sugestão(ões) de ligação geradas.`);
+    await loadChecks();
+  });
+
   async function search(e: FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
@@ -75,6 +81,7 @@ export function AIView({ projectId }: { projectId: string }) {
       <div className="row" style={{ marginBottom: "1.25rem" }}>
         <button onClick={reindex} disabled={!!busy || disabled}>{busy === "reindex" ? "…" : "Reindexar embeddings"}</button>
         <button onClick={check} disabled={!!busy || disabled}>{busy === "check" ? "Analisando…" : "Checar consistência"}</button>
+        <button onClick={suggest} disabled={!!busy || disabled}>{busy === "suggest" ? "…" : "Sugerir ligações"}</button>
       </div>
 
       <form onSubmit={search} className="row">

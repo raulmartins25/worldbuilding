@@ -6,19 +6,21 @@ import { AttributesTab } from "./drawer/AttributesTab";
 import { TagsTab } from "./drawer/TagsTab";
 import { ReferencesTab } from "./drawer/ReferencesTab";
 import { RelationsTab } from "./drawer/RelationsTab";
+import { InterviewTab } from "./drawer/InterviewTab";
 
 interface FullEntry {
   id: string; title: string; summary: string | null; type: string;
   body: unknown; status: string;
 }
 
-type Tab = "conteudo" | "atributos" | "tags" | "refs" | "relacoes";
+type Tab = "conteudo" | "atributos" | "tags" | "refs" | "relacoes" | "entrevista";
 const TABS: { k: Tab; label: string }[] = [
   { k: "conteudo", label: "Conteúdo" },
   { k: "atributos", label: "Atributos" },
   { k: "tags", label: "Tags" },
   { k: "refs", label: "Referências" },
   { k: "relacoes", label: "Relações" },
+  { k: "entrevista", label: "Entrevista" },
 ];
 
 function Toolbar({ editor }: { editor: Editor | null }) {
@@ -116,6 +118,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
         {tab === "tags" && <TagsTab entryId={entryId} projectId={projectId} />}
         {tab === "refs" && <ReferencesTab entryId={entryId} />}
         {tab === "relacoes" && <RelationsTab entryId={entryId} projectId={projectId} />}
+        {tab === "entrevista" && <InterviewTab entryId={entryId} title={title || "personagem"} />}
       </div>
     </div>
   );
