@@ -4,7 +4,9 @@ import StarterKit from "@tiptap/starter-kit";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
-import { AttributesTab } from "./drawer/AttributesTab";
+import { INTERVIEWABLE } from "../lib/templates";
+import type { EntryType } from "../lib/types";
+import { DetailsTab } from "./drawer/DetailsTab";
 import { TagsTab } from "./drawer/TagsTab";
 import { ReferencesTab } from "./drawer/ReferencesTab";
 import { RelationsTab } from "./drawer/RelationsTab";
@@ -12,18 +14,22 @@ import { InterviewTab } from "./drawer/InterviewTab";
 
 interface FullEntry {
   id: string; title: string; summary: string | null; type: string;
-  body: unknown; status: string;
+  body: unknown; status: string; metadata: Record<string, unknown>;
 }
 
-type Tab = "conteudo" | "atributos" | "tags" | "refs" | "relacoes" | "entrevista";
-const TABS: { k: Tab; label: string }[] = [
-  { k: "conteudo", label: "Conteúdo" },
-  { k: "atributos", label: "Atributos" },
-  { k: "tags", label: "Tags" },
-  { k: "refs", label: "Referências" },
-  { k: "relacoes", label: "Relações" },
-  { k: "entrevista", label: "Entrevista" },
-];
+type Tab = "conteudo" | "detalhes" | "tags" | "refs" | "relacoes" | "entrevista";
+
+function tabsFor(type: string | undefined): { k: Tab; label: string }[] {
+  const base: { k: Tab; label: string }[] = [
+    { k: "conteudo", label: "Conteúdo" },
+    { k: "detalhes", label: "Detalhes" },
+    { k: "tags", label: "Tags" },
+    { k: "refs", label: "Referências" },
+    { k: "relacoes", label: "Relações" },
+  ];
+  if (type && INTERVIEWABLE.has(type as EntryType)) base.push({ k: "entrevista", label: "Entrevista" });
+  return base;
+}
 
 function Toolbar({ editor }: { editor: Editor | null }) {
   if (!editor) return null;
@@ -87,7 +93,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
       </div>
 
       <div className="row" style={{ gap: 2, padding: "6px 8px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
-        {TABS.map((t) => (
+        {tabsFor(entry?.type).map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             style={{ padding: "4px 8px", fontSize: 13, background: tab === t.k ? "var(--panel-2)" : "transparent", color: tab === t.k ? "var(--text)" : "var(--muted)", border: "none" }}>
             {t.label}
@@ -117,7 +123,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
             </div>
           </div>
         )}
-        {tab === "atributos" && <AttributesTab entryId={entryId} />}
+        {tab === "detalhes" && entry && <DetailsTab entryId={entryId} type={entry.type} initialMetadata={entry.metadata ?? {}} />}
         {tab === "tags" && <TagsTab entryId={entryId} projectId={projectId} />}
         {tab === "refs" && <ReferencesTab entryId={entryId} />}
         {tab === "relacoes" && <RelationsTab entryId={entryId} projectId={projectId} />}

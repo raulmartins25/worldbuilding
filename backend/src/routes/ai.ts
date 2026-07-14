@@ -18,10 +18,15 @@ async function buildProjectContext(pid: string): Promise<{ text: string; titleBy
   const attrsByEntry: Record<string, string[]> = {};
   for (const a of attrs) (attrsByEntry[a.entryId] ??= []).push(`${a.key}=${a.value ?? ""}`);
 
+  const mdOf = (m: unknown) => {
+    const o = (m ?? {}) as Record<string, unknown>;
+    const parts = Object.entries(o).filter(([, v]) => v != null && String(v).trim());
+    return parts.length ? ` | detalhes: ${parts.map(([k, v]) => `${k}=${v}`).join(", ")}` : "";
+  };
   const lines: string[] = ["# Entries"];
   for (const e of es) {
     const at = attrsByEntry[e.id]?.length ? ` | atributos: ${attrsByEntry[e.id].join(", ")}` : "";
-    lines.push(`- [${e.type}/${e.status}] ${e.title}: ${e.summary ?? "(sem resumo)"}${at}`);
+    lines.push(`- [${e.type}/${e.status}] ${e.title}: ${e.summary ?? "(sem resumo)"}${mdOf(e.metadata)}${at}`);
   }
   if (rels.length) {
     lines.push("\n# Relações");
@@ -49,6 +54,8 @@ async function buildEntryContext(entryId: string): Promise<{ entry: typeof entri
   titleById[entryId] = entry.title;
 
   const lines = [`# ${entry.title} (${entry.type}, ${entry.status})`, entry.summary ?? "", buildEntryText(entry)];
+  const md = Object.entries((entry.metadata ?? {}) as Record<string, unknown>).filter(([, v]) => v != null && String(v).trim());
+  if (md.length) lines.push("Detalhes: " + md.map(([k, v]) => `${k}=${v}`).join(", "));
   if (attrs.length) lines.push("Atributos: " + attrs.map((a) => `${a.key}=${a.value ?? ""}`).join(", "));
   if (rels.length) {
     lines.push("Relações:");
