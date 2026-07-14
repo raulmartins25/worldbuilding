@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  ReactFlow, Background, Controls, Handle, Position,
+  ReactFlow, Background, Controls, Handle, Position, MarkerType,
   useNodesState, useEdgesState,
-  type Node, type Edge, type NodeProps, type NodeChange,
+  type Node, type Edge, type NodeProps, type NodeChange, type Connection,
 } from "@xyflow/react";
 import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
@@ -12,11 +12,22 @@ interface BoardNode {
   x: number; y: number; width: number | null; height: number | null;
 }
 interface BoardEdge { id: string; sourceNodeId: string; targetNodeId: string; label: string | null; }
-interface BoardBundle {
-  board: { id: string };
-  nodes: BoardNode[];
-  edges: BoardEdge[];
-}
+interface BoardBundle { board: { id: string }; nodes: BoardNode[]; edges: BoardEdge[]; }
+
+// tipos de relação e cores (o item "(visual)" cria só a aresta, sem relationship)
+const REL_TYPES: { t: string; c: string }[] = [
+  { t: "aliado_de", c: "#3fb950" },
+  { t: "inimigo_de", c: "#f85149" },
+  { t: "pai_de", c: "#d29922" },
+  { t: "mae_de", c: "#db61a2" },
+  { t: "casado_com", c: "#a371f7" },
+  { t: "governa", c: "#58a6ff" },
+  { t: "pertence_a", c: "#8b949e" },
+  { t: "aparece_em", c: "#39c5cf" },
+  { t: "(visual)", c: "#6e7681" },
+];
+const REL_COLORS: Record<string, string> = Object.fromEntries(REL_TYPES.map((r) => [r.t, r.c]));
+const edgeColor = (label: string | null | undefined) => REL_COLORS[label ?? ""] ?? "#6e7681";
 
 type CardData = { title: string; etype: string; entryId: string | null; onRename: (nodeId: string, entryId: string | null, title: string) => void };
 
@@ -25,12 +36,10 @@ function EntryCardNode({ id, data }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(d.title);
   useEffect(() => setVal(d.title), [d.title]);
-
   const commit = () => {
     setEditing(false);
     if (val.trim() && val !== d.title) d.onRename(id, d.entryId, val.trim());
   };
-
   return (
     <div
       onDoubleClick={() => setEditing(true)}
@@ -61,9 +70,10 @@ function EntryCardNode({ id, data }: NodeProps) {
 export function CanvasView({ projectId }: { projectId: string }) {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, , onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [newType, setNewType] = useState<EntryType>("character");
   const [newTitle, setNewTitle] = useState("");
+  const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const entryMap = useRef<Record<string, Entry>>({});
 
   const nodeTypes = useMemo(() => ({ entryCard: EntryCardNode }), []);
@@ -76,17 +86,19 @@ export function CanvasView({ projectId }: { projectId: string }) {
   const toRfNode = useCallback((bn: BoardNode): Node => {
     const entry = bn.entryId ? entryMap.current[bn.entryId] : undefined;
     return {
-      id: bn.id,
-      type: "entryCard",
-      position: { x: bn.x, y: bn.y },
-      data: {
-        title: entry?.title ?? "(sem entry)",
-        etype: entry?.type ?? bn.kind,
-        entryId: bn.entryId,
-        onRename: renameEntry,
-      } satisfies CardData,
+      id: bn.id, type: "entryCard", position: { x: bn.x, y: bn.y },
+      data: { title: entry?.title ?? "(sem entry)", etype: entry?.type ?? bn.kind, entryId: bn.entryId, onRename: renameEntry } satisfies CardData,
     };
   }, [renameEntry]);
+
+  const toRfEdge = (be: BoardEdge): Edge => ({
+    id: be.id, source: be.sourceNodeId, target: be.targetNodeId,
+    label: be.label ?? undefined,
+    style: { stroke: edgeColor(be.label), strokeWidth: 2 },
+    labelStyle: { fill: "var(--text)", fontSize: 11 },
+    labelBgStyle: { fill: "var(--panel)" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(be.label) },
+  });
 
   const load = useCallback(async () => {
     const [entriesRes, bundle] = await Promise.all([
@@ -96,20 +108,41 @@ export function CanvasView({ projectId }: { projectId: string }) {
     entryMap.current = Object.fromEntries(entriesRes.entries.map((e) => [e.id, e]));
     setBoardId(bundle.board.id);
     setNodes(bundle.nodes.map(toRfNode));
-  }, [projectId, setNodes, toRfNode]);
+    setEdges(bundle.edges.map(toRfEdge));
+  }, [projectId, setNodes, setEdges, toRfNode]);
 
   useEffect(() => { void load(); }, [load]);
 
-  // persiste posição ao soltar o card
   const onNodeDragStop = useCallback((_e: unknown, node: Node) => {
     if (!boardId) return;
     void api.patch(`/boards/${boardId}/nodes`, [{ id: node.id, x: node.position.x, y: node.position.y }]);
   }, [boardId]);
 
-  // remove card (node) ao deletar — mantém a entry
   const onNodesDelete = useCallback((deleted: Node[]) => {
     for (const n of deleted) void api.del(`/board-nodes/${n.id}`);
   }, []);
+
+  const onEdgesDelete = useCallback((deleted: Edge[]) => {
+    for (const e of deleted) void api.del(`/board-edges/${e.id}`);
+  }, []);
+
+  const onConnect = useCallback((c: Connection) => {
+    if (c.source && c.target && c.source !== c.target) setPending({ source: c.source, target: c.target });
+  }, []);
+
+  const confirmConn = async (type: string) => {
+    const p = pending;
+    setPending(null);
+    if (!p || !boardId) return;
+    const isVisual = type === "(visual)";
+    await api.post(`/boards/${boardId}/edges`, {
+      sourceNodeId: p.source, targetNodeId: p.target,
+      relationshipType: isVisual ? undefined : type,
+      label: isVisual ? undefined : type,
+      style: { stroke: edgeColor(type) },
+    });
+    await load();
+  };
 
   async function createCard(e: FormEvent) {
     e.preventDefault();
@@ -137,9 +170,21 @@ export function CanvasView({ projectId }: { projectId: string }) {
         <button className="primary">+ Card</button>
       </form>
 
+      {pending && (
+        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 6, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 10 }}>
+          <div className="muted" style={{ marginBottom: 6, fontSize: 13 }}>Tipo da conexão:</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            {REL_TYPES.map((r) => (
+              <button key={r.t} onClick={() => confirmConn(r.t)} style={{ borderLeft: `4px solid ${r.c}` }}>{r.t}</button>
+            ))}
+          </div>
+          <button onClick={() => setPending(null)} style={{ marginTop: 8, width: "100%" }}>cancelar</button>
+        </div>
+      )}
+
       {nodes.length === 0 && (
         <div className="muted" style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
-          Canvas vazio — crie um card acima. Duplo-clique edita o título; arraste pra reposicionar (salva sozinho).
+          Canvas vazio — crie um card. Duplo-clique edita; arraste do lado direito de um card ao outro pra conectar.
         </div>
       )}
 
@@ -151,6 +196,8 @@ export function CanvasView({ projectId }: { projectId: string }) {
         onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
+        onConnect={onConnect}
         fitView
       >
         <Background />

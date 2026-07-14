@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { boards, boardNodes, boardEdges, entries } from "../db/schema";
+import { boards, boardNodes, boardEdges, entries, relationships } from "../db/schema";
 import { httpError, requireBoard, requireProject } from "../lib/guard";
 
 const ENTRY_TYPES = [
@@ -151,7 +151,7 @@ export async function boardRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
-  // edges do board (fatia 2 usa mais; já deixo o CRUD)
+  // criar edge no board; opcionalmente cria/associa um relationship semântico
   app.post("/boards/:id/edges", async (req, reply) => {
     const { id } = req.params as { id: string };
     const board = await requireBoard(req.user.sub, id);
@@ -159,19 +159,39 @@ export async function boardRoutes(app: FastifyInstance) {
       sourceNodeId: z.string().uuid(),
       targetNodeId: z.string().uuid(),
       label: z.string().optional(),
-      relationshipId: z.string().uuid().optional(),
+      relationshipType: z.string().optional(),
       style: z.record(z.any()).optional(),
     }).parse(req.body);
-    // garante que os nodes são do board
-    const ns = await db.select({ id: boardNodes.id }).from(boardNodes)
+
+    // garante que os nodes são do board (e pega as entries deles)
+    const ns = await db.select({ id: boardNodes.id, entryId: boardNodes.entryId }).from(boardNodes)
       .where(and(eq(boardNodes.boardId, id), inArray(boardNodes.id, [body.sourceNodeId, body.targetNodeId])));
     if (ns.length !== 2) throw httpError(400, "nodes_outside_board");
+
+    let relationship: typeof relationships.$inferSelect | null = null;
+    if (body.relationshipType) {
+      const src = ns.find((n) => n.id === body.sourceNodeId);
+      const tgt = ns.find((n) => n.id === body.targetNodeId);
+      if (src?.entryId && tgt?.entryId) {
+        const rows = await db.insert(relationships).values({
+          projectId: board.projectId, sourceId: src.entryId, targetId: tgt.entryId, type: body.relationshipType,
+        }).onConflictDoNothing().returning();
+        relationship = rows[0] ?? (await db.select().from(relationships).where(and(
+          eq(relationships.sourceId, src.entryId),
+          eq(relationships.targetId, tgt.entryId),
+          eq(relationships.type, body.relationshipType),
+        )))[0] ?? null;
+      }
+    }
+
     const [edge] = await db.insert(boardEdges).values({
       projectId: board.projectId, boardId: id,
       sourceNodeId: body.sourceNodeId, targetNodeId: body.targetNodeId,
-      label: body.label, relationshipId: body.relationshipId, style: body.style ?? {},
+      label: body.label ?? body.relationshipType,
+      relationshipId: relationship?.id,
+      style: body.style ?? {},
     }).returning();
-    return reply.code(201).send({ edge });
+    return reply.code(201).send({ edge, relationship });
   });
 
   app.delete("/board-edges/:edgeId", async (req, reply) => {
