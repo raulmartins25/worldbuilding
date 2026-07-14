@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import type { Project } from "../lib/types";
 import { CanvasView } from "./CanvasView";
 import { EntriesView } from "./EntriesView";
+import { GraphView } from "./GraphView";
 
 const NAV = [
   { to: "", label: "Canvas", end: true },
@@ -68,7 +69,7 @@ export function WorldShell() {
           <Route path="entries" element={<EntriesView projectId={pid!} />} />
           <Route path="map" element={<Placeholder title="Mapa cartográfico" />} />
           <Route path="timeline" element={<Placeholder title="Linha do tempo" />} />
-          <Route path="graph" element={<Placeholder title="Grafo & genealogia" />} />
+          <Route path="graph" element={<GraphView projectId={pid!} />} />
         </Routes>
       </main>
     </div>
