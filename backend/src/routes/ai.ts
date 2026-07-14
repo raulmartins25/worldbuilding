@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { entries, relationships, memberships, attributes, aiChecks } from "../db/schema";
@@ -43,7 +43,7 @@ async function buildEntryContext(entryId: string): Promise<{ entry: typeof entri
 
   const otherIds = [...new Set(rels.flatMap((r) => [r.sourceId, r.targetId]).filter((id) => id !== entryId))];
   const others = otherIds.length
-    ? await db.select({ id: entries.id, title: entries.title }).from(entries).where(sql`id = ANY(${otherIds})`)
+    ? await db.select({ id: entries.id, title: entries.title }).from(entries).where(inArray(entries.id, otherIds))
     : [];
   const titleById: Record<string, string> = Object.fromEntries(others.map((o) => [o.id, o.title]));
   titleById[entryId] = entry.title;
