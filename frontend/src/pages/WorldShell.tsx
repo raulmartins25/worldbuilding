@@ -8,10 +8,10 @@ import { GraphView } from "./GraphView";
 import { AIView } from "./AIView";
 
 const NAV = [
-  { to: "", label: "Canvas", end: true },
-  { to: "entries", label: "Entries" },
+  { to: "", label: "Quadro", end: true },
+  { to: "entries", label: "Fichas" },
   { to: "map", label: "Mapa" },
-  { to: "timeline", label: "Timeline" },
+  { to: "timeline", label: "Linha do tempo" },
   { to: "graph", label: "Grafo" },
   { to: "ia", label: "IA" },
 ];

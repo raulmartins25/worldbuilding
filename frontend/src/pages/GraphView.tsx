@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ReactFlow, Background, Controls, MarkerType, type Node, type Edge } from "@xyflow/react";
 import { api } from "../lib/api";
+import { typeMeta, relLabel } from "../lib/entryTypes";
 
 interface GNode { id: string; title: string; type: string; }
 interface GEdge { id: string; sourceId: string; targetId: string; type: string; label: string | null; }
@@ -83,37 +84,32 @@ export function GraphView({ projectId }: { projectId: string }) {
   }, [projectId]);
   useEffect(() => { void load(); }, [load]);
 
-  const nodeStyle = { background: "var(--panel-2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 10, width: 170, whiteSpace: "pre-line" as const, fontSize: 12 };
+  const nodeFor = (id: string, type: string, title: string, pos: { x: number; y: number }): Node => {
+    const m = typeMeta(type);
+    return {
+      id, position: pos,
+      data: { label: `${m.icon} ${title}\n${m.label}` },
+      style: { background: "var(--panel-2)", color: "var(--text)", border: `1px solid var(--border)`, borderTop: `3px solid ${m.color}`, borderRadius: 10, width: 172, whiteSpace: "pre-line" as const, fontSize: 12, padding: 6 },
+    };
+  };
+  const edgeFor = (id: string, source: string, target: string, type: string): Edge => ({
+    id, source, target, label: relLabel(type),
+    style: { stroke: edgeColor(type), strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(type) },
+    labelStyle: { fill: "var(--text)", fontSize: 11 }, labelBgStyle: { fill: "var(--panel)" },
+  });
 
   const { rfNodes, rfEdges } = useMemo(() => {
-    const titleMap = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
+    const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
     if (mode === "genealogy") {
       const { pos, nodeIds, genEdges } = genealogyLayout(graph.edges);
-      const rfN: Node[] = [...nodeIds].map((id) => ({
-        id, position: pos[id] ?? { x: 0, y: 0 },
-        data: { label: `${titleMap[id]?.title ?? id.slice(0, 6)}\n(${titleMap[id]?.type ?? "?"})` },
-        style: nodeStyle,
-      }));
-      const rfE: Edge[] = genEdges.map((e) => ({
-        id: e.id, source: e.sourceId, target: e.targetId, label: e.type,
-        style: { stroke: edgeColor(e.type), strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(e.type) },
-        labelStyle: { fill: "var(--text)", fontSize: 11 }, labelBgStyle: { fill: "var(--panel)" },
-      }));
+      const rfN = [...nodeIds].map((id) => nodeFor(id, byId[id]?.type ?? "note", byId[id]?.title ?? id.slice(0, 6), pos[id] ?? { x: 0, y: 0 }));
+      const rfE = genEdges.map((e) => edgeFor(e.id, e.sourceId, e.targetId, e.type));
       return { rfNodes: rfN, rfEdges: rfE };
     }
-    const ids = graph.nodes.map((n) => n.id);
-    const pos = forceLayout(ids, graph.edges);
-    const rfN: Node[] = graph.nodes.map((n) => ({
-      id: n.id, position: pos[n.id] ?? { x: 0, y: 0 },
-      data: { label: `${n.title}\n(${n.type})` }, style: nodeStyle,
-    }));
-    const rfE: Edge[] = graph.edges.map((e) => ({
-      id: e.id, source: e.sourceId, target: e.targetId, label: e.label ?? e.type,
-      style: { stroke: edgeColor(e.type), strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(e.type) },
-      labelStyle: { fill: "var(--text)", fontSize: 11 }, labelBgStyle: { fill: "var(--panel)" },
-    }));
+    const pos = forceLayout(graph.nodes.map((n) => n.id), graph.edges);
+    const rfN = graph.nodes.map((n) => nodeFor(n.id, n.type, n.title, pos[n.id] ?? { x: 0, y: 0 }));
+    const rfE = graph.edges.map((e) => edgeFor(e.id, e.sourceId, e.targetId, e.type));
     return { rfNodes: rfN, rfEdges: rfE };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, mode]);

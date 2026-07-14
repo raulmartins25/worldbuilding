@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { typeMeta, relLabel } from "../../lib/entryTypes";
 
 interface Rel { id: string; sourceId: string; targetId: string; type: string; label: string | null; }
 interface E { id: string; title: string; type: string; }
@@ -41,18 +42,18 @@ export function RelationsTab({ entryId, projectId }: { entryId: string; projectI
         return (
           <div key={r.id} className="card row" style={{ padding: 8 }}>
             <span className="muted" style={{ fontSize: 12 }}>{outgoing ? "→" : "←"}</span>
-            <span className="grow"><strong>{titleOf(other)}</strong> <span className="muted">· {r.type}</span></span>
+            <span className="grow"><strong>{titleOf(other)}</strong> <span className="muted">· {relLabel(r.type)}</span></span>
             <button onClick={() => del(r.id)}>×</button>
           </div>
         );
       })}
       <div className="row" style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-        <select value={type} onChange={(e) => setType(e.target.value)} style={{ width: 130 }}>
-          {REL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        <select value={type} onChange={(e) => setType(e.target.value)} style={{ width: 150 }}>
+          {REL_TYPES.map((t) => <option key={t} value={t}>{relLabel(t)}</option>)}
         </select>
         <select value={target} onChange={(e) => setTarget(e.target.value)} className="grow">
           <option value="">— alvo —</option>
-          {entries.map((e) => <option key={e.id} value={e.id}>{e.title} ({e.type})</option>)}
+          {entries.map((e) => <option key={e.id} value={e.id}>{typeMeta(e.type).icon} {e.title}</option>)}
         </select>
         <button className="primary" onClick={add} disabled={!target}>+</button>
       </div>
