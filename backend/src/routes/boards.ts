@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { boards, boardNodes, boardEdges, entries, relationships } from "../db/schema";
+import { boards, boardNodes, boardEdges, entries, relationships, memberships } from "../db/schema";
 import { httpError, requireBoard, requireProject } from "../lib/guard";
 
 const ENTRY_TYPES = [
@@ -106,6 +106,38 @@ export async function boardRoutes(app: FastifyInstance) {
       return { entry, node };
     });
     return reply.code(201).send(result);
+  });
+
+  // plota no board os membros (memberships) do contêiner ainda não presentes
+  app.post("/boards/:id/expand-container", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const board = await requireBoard(req.user.sub, id);
+    const { containerNodeId } = z.object({ containerNodeId: z.string().uuid() }).parse(req.body);
+
+    const [cnode] = await db.select().from(boardNodes)
+      .where(and(eq(boardNodes.id, containerNodeId), eq(boardNodes.boardId, id)));
+    if (!cnode || !cnode.entryId) throw httpError(400, "not_a_container_node");
+
+    const mems = await db.select().from(memberships).where(eq(memberships.containerId, cnode.entryId));
+    const memberEntryIds = mems.map((m) => m.memberId);
+    if (memberEntryIds.length === 0) return { created: [] };
+
+    const existing = await db.select({ entryId: boardNodes.entryId }).from(boardNodes)
+      .where(and(eq(boardNodes.boardId, id), inArray(boardNodes.entryId, memberEntryIds)));
+    const existingSet = new Set(existing.map((n) => n.entryId));
+    const toCreate = memberEntryIds.filter((eid) => !existingSet.has(eid));
+
+    const created = [];
+    let i = 0;
+    for (const eid of toCreate) {
+      const [n] = await db.insert(boardNodes).values({
+        projectId: board.projectId, boardId: id, entryId: eid, kind: "card",
+        x: cnode.x + 40 + (i % 4) * 200, y: cnode.y + 150 + Math.floor(i / 4) * 120,
+      }).returning();
+      created.push(n);
+      i++;
+    }
+    return reply.code(201).send({ created });
   });
 
   // batch de posições/tamanho (salvar drag)
