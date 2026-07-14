@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { projects, entries, boards } from "../db/schema";
+import { projects, entries, boards, maps } from "../db/schema";
 
 /** Erro com statusCode para o error handler global. */
 export function httpError(statusCode: number, message: string) {
@@ -38,4 +38,15 @@ export async function requireBoard(userId: string, boardId: string) {
     .where(and(eq(boards.id, boardId), eq(projects.userId, userId)));
   if (!row) throw httpError(404, "board_not_found");
   return row.board;
+}
+
+/** Retorna o mapa se pertencer ao usuário (via projeto), senão lança 404. */
+export async function requireMap(userId: string, mapId: string) {
+  const [row] = await db
+    .select({ map: maps })
+    .from(maps)
+    .innerJoin(projects, eq(maps.projectId, projects.id))
+    .where(and(eq(maps.id, mapId), eq(projects.userId, userId)));
+  if (!row) throw httpError(404, "map_not_found");
+  return row.map;
 }

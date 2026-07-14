@@ -7,6 +7,8 @@ import { CanvasView } from "./CanvasView";
 import { EntriesView } from "./EntriesView";
 import { GraphView } from "./GraphView";
 import { AIView } from "./AIView";
+import { MapView } from "./MapView";
+import { TimelineView } from "./TimelineView";
 
 const NAV = [
   { to: "", label: "Quadro", end: true },
@@ -16,17 +18,6 @@ const NAV = [
   { to: "graph", label: "Grafo" },
   { to: "ia", label: "IA" },
 ];
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div className="center-screen muted">
-      <div className="card" style={{ textAlign: "center" }}>
-        <strong>{title}</strong>
-        <div>Em breve — próxima fase do roadmap.</div>
-      </div>
-    </div>
-  );
-}
 
 export function WorldShell() {
   const { pid } = useParams();
@@ -72,8 +63,8 @@ export function WorldShell() {
         <Routes>
           <Route index element={<CanvasView projectId={pid!} />} />
           <Route path="entries" element={<EntriesView projectId={pid!} />} />
-          <Route path="map" element={<Placeholder title="Mapa cartográfico" />} />
-          <Route path="timeline" element={<Placeholder title="Linha do tempo" />} />
+          <Route path="map" element={<MapView projectId={pid!} />} />
+          <Route path="timeline" element={<TimelineView projectId={pid!} />} />
           <Route path="graph" element={<GraphView projectId={pid!} />} />
           <Route path="ia" element={<AIView projectId={pid!} />} />
         </Routes>

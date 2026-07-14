@@ -9,6 +9,8 @@ import { tagRoutes } from "./tags";
 import { boardRoutes } from "./boards";
 import { referenceRoutes } from "./references";
 import { aiRoutes } from "./ai";
+import { mapRoutes } from "./maps";
+import { timelineRoutes } from "./timeline";
 
 export async function registerRoutes(app: FastifyInstance) {
   app.register(authRoutes, { prefix: "/auth" });
@@ -21,4 +23,6 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(boardRoutes);
   app.register(referenceRoutes);
   app.register(aiRoutes);
+  app.register(mapRoutes);
+  app.register(timelineRoutes);
 }
