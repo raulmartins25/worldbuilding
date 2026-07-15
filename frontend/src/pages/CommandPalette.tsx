@@ -70,7 +70,7 @@ export function CommandPalette({ open, onClose, projectId }: { open: boolean; on
       <div onClick={(e) => e.stopPropagation()} onKeyDown={onKey} style={{ width: 560, maxWidth: "92vw", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", overflow: "hidden" }}>
         <div className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", gap: 8 }}>
           <IconSearch size={18} color="var(--muted)" />
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar fichas, lentes, ações…" style={{ border: "none", padding: 0 }} />
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Buscar fichas, lentes, ações…" style={{ border: "none", padding: 0 }} />
           <span className="muted" style={{ fontSize: 11 }}>Esc</span>
         </div>
         <div style={{ maxHeight: "50vh", overflow: "auto", padding: 6 }}>
