@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { useSearchParams } from "react-router-dom";
 import { useTheme, canvasDot } from "../lib/theme";
 import { EntryDrawer } from "./EntryDrawer";
 
@@ -103,7 +104,18 @@ export function CanvasView({ projectId }: { projectId: string }) {
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
+
+  // abre o drawer quando a command palette navega com ?open=<id>
+  useEffect(() => {
+    const o = searchParams.get("open");
+    if (o) {
+      setOpenId(o);
+      searchParams.delete("open");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const entryMap = useRef<Record<string, Entry>>({});
   const membersRef = useRef<Record<string, string[]>>({});

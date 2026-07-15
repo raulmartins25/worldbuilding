@@ -10,6 +10,11 @@ import { GraphView } from "./GraphView";
 import { AIView } from "./AIView";
 import { MapView } from "./MapView";
 import { TimelineView } from "./TimelineView";
+import { CommandPalette } from "./CommandPalette";
+
+const LENS_LABEL: Record<string, string> = {
+  "": "Quadro", entries: "Fichas", map: "Mapa", timeline: "Linha do tempo", graph: "Grafo", ia: "Central de IA",
+};
 
 const NAV = [
   { to: "", label: "Quadro", end: true },
@@ -27,6 +32,19 @@ export function WorldShell() {
   const [project, setProject] = useState<Project | null>(null);
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [theme, setTheme] = useState<ThemeName>("default");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Cmd/Ctrl+K abre a command palette (espinha por teclado)
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((o) => !o); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const seg = (location.pathname.split(`/worlds/${pid}`)[1] ?? "").replace(/^\//, "");
+  const lens = LENS_LABEL[seg] ?? "Quadro";
 
   useEffect(() => {
     if (!pid) return;
@@ -90,19 +108,29 @@ export function WorldShell() {
           </div>
         </aside>
 
-        <main style={{ minWidth: 0, position: "relative" }}>
-          <ErrorBoundary key={location.pathname}>
-            <Routes>
-              <Route index element={<CanvasView projectId={pid!} />} />
-              <Route path="entries" element={<EntriesView projectId={pid!} />} />
-              <Route path="map" element={<MapView projectId={pid!} />} />
-              <Route path="timeline" element={<TimelineView projectId={pid!} />} />
-              <Route path="graph" element={<GraphView projectId={pid!} />} />
-              <Route path="ia" element={<AIView projectId={pid!} />} />
-            </Routes>
-          </ErrorBoundary>
+        <main style={{ minWidth: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+          <div className="row" style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", background: "var(--panel)", fontSize: 13, flexShrink: 0 }}>
+            <span className="muted">{project?.name ?? "Mundo"}</span>
+            <span className="muted">›</span>
+            <span style={{ fontWeight: 500 }}>{lens}</span>
+            <span className="grow" />
+            <button onClick={() => setPaletteOpen(true)} title="Buscar / comandos (Ctrl/Cmd+K)" style={{ fontSize: 12, padding: "2px 8px" }}>⌘K</button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+            <ErrorBoundary key={location.pathname}>
+              <Routes>
+                <Route index element={<CanvasView projectId={pid!} />} />
+                <Route path="entries" element={<EntriesView projectId={pid!} />} />
+                <Route path="map" element={<MapView projectId={pid!} />} />
+                <Route path="timeline" element={<TimelineView projectId={pid!} />} />
+                <Route path="graph" element={<GraphView projectId={pid!} />} />
+                <Route path="ia" element={<AIView projectId={pid!} />} />
+              </Routes>
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
+      {pid && <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projectId={pid} />}
     </ThemeCtx.Provider>
   );
 }
