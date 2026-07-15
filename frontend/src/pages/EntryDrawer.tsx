@@ -11,6 +11,7 @@ import { TagsTab } from "./drawer/TagsTab";
 import { ReferencesTab } from "./drawer/ReferencesTab";
 import { RelationsTab } from "./drawer/RelationsTab";
 import { InterviewTab } from "./drawer/InterviewTab";
+import { FocusMode } from "./FocusMode";
 
 interface FullEntry {
   id: string; title: string; summary: string | null; type: string;
@@ -56,8 +57,14 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
   const [status, setStatus] = useState<string>("draft");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [focus, setFocus] = useState(false);
 
   const editor = useEditor({ extensions: [StarterKit], content: "" });
+
+  async function reload() {
+    const r = await api.get<{ entry: FullEntry }>(`/entries/${entryId}`);
+    setEntry(r.entry); setTitle(r.entry.title); setSummary(r.entry.summary ?? ""); setStatus(r.entry.status);
+  }
 
   useEffect(() => {
     api.get<{ entry: FullEntry }>(`/entries/${entryId}`).then((r) => {
@@ -85,6 +92,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
   }
 
   return (
+    <>
     <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 440, zIndex: 20, background: "var(--panel)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", boxShadow: "-8px 0 24px rgba(20,24,40,.12)" }}>
       <div className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
         {entry && <EntryIcon type={entry.type} size={22} color={typeMeta(entry.type).color} />}
@@ -118,7 +126,10 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
               <button className="primary" onClick={saveContent} disabled={saving}>{saving ? "…" : "Salvar"}</button>
             </div>
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-              <Toolbar editor={editor} />
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+                <Toolbar editor={editor} />
+                <button onClick={() => setFocus(true)} title="escrita sem distração (santuário)">Modo foco</button>
+              </div>
               <div className="tiptap-wrap"><EditorContent editor={editor} /></div>
             </div>
           </div>
@@ -130,5 +141,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
         {tab === "entrevista" && <InterviewTab entryId={entryId} title={title || "personagem"} />}
       </div>
     </div>
+    {focus && <FocusMode entryId={entryId} onClose={() => { setFocus(false); void reload(); }} />}
+    </>
   );
 }

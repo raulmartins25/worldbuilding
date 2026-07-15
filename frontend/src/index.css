@@ -115,3 +115,45 @@ input:focus, textarea:focus, select:focus {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 :root.reduce-motion * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+
+/* ── temas por mundo (paleta) ───────────────────────────────────────────── */
+:root[data-world-theme="parchment"] {
+  --bg: #efe6d2; --panel: #faf4e6; --panel-2: #f0e7d2;
+  --border: #e3d6b8; --border-strong: #d3c199; --text: #33291a; --muted: #7a6a4f;
+}
+:root[data-world-theme="stone"] {
+  --bg: #e7e9ee; --panel: #f5f6f8; --panel-2: #e4e7ec;
+  --border: #d2d7e0; --border-strong: #bcc3cf; --text: #242832; --muted: #66707f;
+}
+:root[data-world-theme="night"] {
+  --bg: #0f1320; --panel: #171b28; --panel-2: #1f2434;
+  --border: #2a3042; --border-strong: #3a4256; --text: #e6e8ee; --muted: #98a2b8;
+  color-scheme: dark;
+}
+
+/* ── modo foco (santuário escuro, serifa) ───────────────────────────────── */
+.focus-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: #14131a; color: #e9e4d8;
+  display: flex; flex-direction: column; overflow: auto;
+}
+.focus-bar {
+  position: sticky; top: 0; display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 18px;
+}
+.focus-bar button {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid #3a3742; color: #b8b2a4;
+}
+.focus-bar button:hover { background: #211f28; }
+.focus-page { max-width: 720px; width: 100%; margin: 2vh auto 12vh; padding: 0 24px; }
+.focus-title { font-family: var(--font-serif); font-weight: 500; font-size: 2rem; color: #f2ecdd; margin: 0 0 1.2rem; }
+.focus-editor .ProseMirror {
+  font-family: var(--font-serif); font-size: 1.25rem; line-height: 1.8;
+  color: #e9e4d8; outline: none; min-height: 60vh;
+}
+.focus-editor .ProseMirror p { margin: 0 0 1em; }
+.focus-editor .ProseMirror h2 { font-family: var(--font-serif); font-weight: 500; }
+.focus-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: "Escreva…"; color: #6b6658; float: left; height: 0; pointer-events: none;
+}

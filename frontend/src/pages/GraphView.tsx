@@ -6,6 +6,7 @@ import {
 import { api } from "../lib/api";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { useTheme, canvasDot } from "../lib/theme";
 
 interface GNode { id: string; title: string; type: string; }
 interface GEdge { id: string; sourceId: string; targetId: string; type: string; label: string | null; }
@@ -100,6 +101,7 @@ function genealogyLayout(edges: GEdge[]) {
 export function GraphView({ projectId }: { projectId: string }) {
   const [graph, setGraph] = useState<{ nodes: GNode[]; edges: GEdge[] }>({ nodes: [], edges: [] });
   const [mode, setMode] = useState<"all" | "genealogy">("all");
+  const theme = useTheme();
   const nodeTypes = useMemo(() => ({ gcard: GraphCardNode }), []);
 
   const load = useCallback(async () => {
@@ -146,7 +148,7 @@ export function GraphView({ projectId }: { projectId: string }) {
         </div>
       )}
       <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={nodeTypes} fitView minZoom={0.1}>
-        <Background color="#d7dbe2" gap={22} />
+        <Background color={canvasDot(theme)} gap={22} />
         <Controls />
         <MiniMap pannable zoomable nodeColor={(n) => typeMeta((n.data as GData).etype).color} style={{ background: "var(--panel)", border: "1px solid var(--border)" }} />
       </ReactFlow>

@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { useTheme, canvasDot } from "../lib/theme";
 import { EntryDrawer } from "./EntryDrawer";
 
 interface BoardNode { id: string; entryId: string | null; kind: string; x: number; y: number; }
@@ -102,6 +103,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const theme = useTheme();
 
   const entryMap = useRef<Record<string, Entry>>({});
   const membersRef = useRef<Record<string, string[]>>({});
@@ -301,7 +303,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
         onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
         fitView
       >
-        <Background color="#d7dbe2" gap={22} />
+        <Background color={canvasDot(theme)} gap={22} />
         <Controls />
         <MiniMap
           pannable zoomable
