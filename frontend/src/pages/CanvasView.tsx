@@ -117,6 +117,27 @@ export function CanvasView({ projectId }: { projectId: string }) {
     }
   }, [searchParams, setSearchParams]);
 
+  // plota um contêiner + membros no quadro (?plot=<entryId> vindo da sidebar)
+  const boardIdRef = useRef<string | null>(null);
+  useEffect(() => { boardIdRef.current = boardId; }, [boardId]);
+  useEffect(() => {
+    const plotId = searchParams.get("plot");
+    const bid = boardIdRef.current;
+    if (!plotId || !bid) return;
+    void (async () => {
+      let nodeId = nodesRef.current.find((n) => (n.data as CardData).entryId === plotId)?.id;
+      if (!nodeId) {
+        const r = await api.post<{ node: { id: string } }>(`/boards/${bid}/nodes`, { entryId: plotId, x: 60, y: 60 });
+        nodeId = r.node.id;
+      }
+      await api.post(`/boards/${bid}/expand-container`, { containerNodeId: nodeId }).catch(() => {});
+      searchParams.delete("plot");
+      setSearchParams(searchParams, { replace: true });
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, boardId]);
+
   const entryMap = useRef<Record<string, Entry>>({});
   const membersRef = useRef<Record<string, string[]>>({});
   const aiFlagsRef = useRef<Set<string>>(new Set());

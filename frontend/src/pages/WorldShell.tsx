@@ -11,6 +11,7 @@ import { AIView } from "./AIView";
 import { MapView } from "./MapView";
 import { TimelineView } from "./TimelineView";
 import { CommandPalette } from "./CommandPalette";
+import { ContainerTree } from "./ContainerTree";
 
 const LENS_LABEL: Record<string, string> = {
   "": "Quadro", entries: "Fichas", map: "Mapa", timeline: "Linha do tempo", graph: "Grafo", ia: "Central de IA",
@@ -100,6 +101,11 @@ export function WorldShell() {
               </NavLink>
             ))}
           </nav>
+          <ContainerTree
+            projectId={pid!}
+            onOpen={(id) => navigate(`/worlds/${pid}?open=${id}`)}
+            onPlot={(id) => navigate(`/worlds/${pid}?plot=${id}`)}
+          />
           <div className="stack" style={{ marginTop: "auto", gap: 4 }}>
             <label className="muted" style={{ fontSize: 12 }}>Tema do mundo</label>
             <select value={theme} onChange={(e) => changeTheme(e.target.value as ThemeName)}>
