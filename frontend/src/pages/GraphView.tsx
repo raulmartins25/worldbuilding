@@ -37,7 +37,7 @@ function GraphCardNode({ data }: NodeProps) {
 function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number; y: number }> {
   if (ids.length === 0) return {};
   const n = ids.length;
-  const W = 1000, H = 680;
+  const W = 720, H = 500;
   const k = Math.sqrt((W * H) / n);
   const idx: Record<string, number> = Object.fromEntries(ids.map((id, i) => [id, i]));
   const pos: Record<string, { x: number; y: number }> = {};
@@ -63,6 +63,9 @@ function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number;
       disp[a].x -= dx; disp[a].y -= dy; disp[b].x += dx; disp[b].y += dy;
     }
     for (let i = 0; i < n; i++) {
+      // gravidade central: mantém nós isolados agrupados
+      disp[i].x += (W / 2 - pos[ids[i]].x) * 0.05;
+      disp[i].y += (H / 2 - pos[ids[i]].y) * 0.05;
       const d = Math.hypot(disp[i].x, disp[i].y) || 0.01, lim = Math.min(d, temp);
       pos[ids[i]].x += (disp[i].x / d) * lim; pos[ids[i]].y += (disp[i].y / d) * lim;
     }
