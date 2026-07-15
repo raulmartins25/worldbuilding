@@ -1,29 +1,46 @@
 import type { EntryType } from "./types";
 
-export interface TypeMeta { label: string; icon: string; color: string; }
+// ── util de cor: mistura hex1→hex2 por t (0..1) ─────────────────────────────
+function hexToRgb(h: string): [number, number, number] {
+  const s = h.replace("#", "");
+  const n = parseInt(s.length === 3 ? s.split("").map((c) => c + c).join("") : s, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function mix(a: string, b: string, t: number): string {
+  const [r1, g1, b1] = hexToRgb(a);
+  const [r2, g2, b2] = hexToRgb(b);
+  const to = (x: number, y: number) => Math.round(x + (y - x) * t).toString(16).padStart(2, "0");
+  return `#${to(r1, r2)}${to(g1, g2)}${to(b1, b2)}`;
+}
+export const tintOf = (c: string) => mix(c, "#ffffff", 0.88);
+export const borderOf = (c: string) => mix(c, "#ffffff", 0.45);
+export const inkOf = (c: string) => mix(c, "#14171d", 0.34);
 
-// identidade visual + rótulo PT-BR por tipo de entry
-export const ENTRY_TYPE_META: Record<EntryType, TypeMeta> = {
-  character:    { label: "Personagem",        icon: "🧙", color: "#7c5cff" },
-  location:     { label: "Local",             icon: "🗼", color: "#4cc2ff" },
-  region:       { label: "Reino / Região",    icon: "🏰", color: "#f0a020" },
-  faction:      { label: "Facção",            icon: "⚔️", color: "#f85149" },
-  item:         { label: "Item",              icon: "💎", color: "#39c5cf" },
-  magic_system: { label: "Sistema de Magia",  icon: "✨", color: "#a371f7" },
-  species:      { label: "Espécie",           icon: "🧬", color: "#3fb950" },
-  creature:     { label: "Criatura",          icon: "🐉", color: "#db61a2" },
-  deity:        { label: "Divindade",         icon: "🔱", color: "#f2cc60" },
-  religion:     { label: "Religião",          icon: "⛩️", color: "#e3b341" },
-  event:        { label: "Evento",            icon: "⚡", color: "#ff7b72" },
-  lore:         { label: "Lenda / Saber",     icon: "📖", color: "#79c0ff" },
-  language:     { label: "Idioma",            icon: "🗣️", color: "#56d364" },
-  scene:        { label: "Cena",              icon: "🎬", color: "#bc8cff" },
-  chapter:      { label: "Capítulo",          icon: "📜", color: "#d2a8ff" },
-  note:         { label: "Nota",              icon: "📝", color: "#8b949e" },
+export interface TypeMeta { label: string; icon: string; color: string; tint: string; border: string; ink: string; }
+
+// cor de destaque + rótulo PT + emoji (usado só nos <option>) por tipo
+const BASE: Record<EntryType, { label: string; icon: string; color: string }> = {
+  character:    { label: "Personagem",       icon: "🧙", color: "#D4537E" },
+  location:     { label: "Local",            icon: "🗼", color: "#378ADD" },
+  region:       { label: "Reino / Região",   icon: "🏰", color: "#3B5BDB" },
+  faction:      { label: "Facção",           icon: "⚔️", color: "#BA7517" },
+  item:         { label: "Item",             icon: "💎", color: "#5F5E5A" },
+  magic_system: { label: "Sistema de Magia", icon: "✨", color: "#7F77DD" },
+  species:      { label: "Espécie",          icon: "🧬", color: "#1D9E75" },
+  creature:     { label: "Criatura",         icon: "🐉", color: "#D85A30" },
+  deity:        { label: "Divindade",        icon: "🔱", color: "#534AB7" },
+  religion:     { label: "Religião",         icon: "⛩️", color: "#534AB7" },
+  event:        { label: "Evento",           icon: "⚡", color: "#0F6E56" },
+  lore:         { label: "Lenda / Saber",    icon: "📖", color: "#9A6B3F" },
+  language:     { label: "Idioma",           icon: "🗣️", color: "#227C9D" },
+  scene:        { label: "Cena",             icon: "🎬", color: "#7048E8" },
+  chapter:      { label: "Capítulo",         icon: "📜", color: "#5F3DC4" },
+  note:         { label: "Nota",             icon: "📝", color: "#868E96" },
 };
 
 export function typeMeta(t: string): TypeMeta {
-  return ENTRY_TYPE_META[t as EntryType] ?? { label: t, icon: "▫️", color: "#8b949e" };
+  const b = BASE[t as EntryType] ?? { label: t, icon: "▫️", color: "#868E96" };
+  return { ...b, tint: tintOf(b.color), border: borderOf(b.color), ink: inkOf(b.color) };
 }
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -32,7 +49,6 @@ export const STATUS_LABEL: Record<string, string> = {
   archived: "Arquivado",
 };
 
-// rótulos PT para os tipos de relação (a chave armazenada continua a mesma)
 export const REL_TYPE_LABEL: Record<string, string> = {
   aliado_de: "Aliado de",
   inimigo_de: "Inimigo de",

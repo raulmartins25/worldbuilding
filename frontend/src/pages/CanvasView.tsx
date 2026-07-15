@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  ReactFlow, Background, Controls, Handle, Position, MarkerType,
+  ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType,
   useNodesState, useEdgesState,
   type Node, type Edge, type NodeProps, type NodeChange, type Connection,
 } from "@xyflow/react";
@@ -25,6 +25,7 @@ const edgeColor = (label: string | null | undefined) => REL_COLORS[label ?? ""] 
 
 type CardData = {
   title: string; etype: string; entryId: string | null;
+  importance: number; status: string; aiFlag: boolean;
   onRename: (nodeId: string, entryId: string | null, title: string) => void;
   onOpen: (entryId: string) => void;
 };
@@ -32,6 +33,12 @@ type CardData = {
 function EntryCardNode({ id, data }: NodeProps) {
   const d = data as CardData;
   const meta = typeMeta(d.etype);
+  const proto = d.importance >= 4;                        // protagonista
+  const support = d.importance >= 2 && d.importance < 4;  // coadjuvante
+  const width = proto ? 244 : support ? 204 : 172;
+  const borderW = proto ? 2 : 1;
+  const dashed = d.status === "draft";                    // rascunho = tracejado
+  const faded = d.status === "archived";                  // esmaecido
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(d.title);
   useEffect(() => setVal(d.title), [d.title]);
@@ -43,25 +50,33 @@ function EntryCardNode({ id, data }: NodeProps) {
     <div
       onDoubleClick={() => setEditing(true)}
       style={{
-        background: "var(--panel-2)", color: "var(--text)",
-        border: "1px solid var(--border)", borderTop: `4px solid ${meta.color}`,
-        borderRadius: 12, width: 210, padding: "10px 12px",
-        boxShadow: `0 4px 16px rgba(0,0,0,.32)`, position: "relative",
+        background: meta.tint, color: meta.ink,
+        border: `${borderW}px ${dashed ? "dashed" : "solid"} ${meta.color}`,
+        borderRadius: 12, width, padding: proto ? "12px 14px" : "9px 11px",
+        opacity: faded ? 0.55 : 1,
+        boxShadow: proto ? `0 8px 20px ${meta.color}2b` : "0 1px 3px rgba(20,24,40,.10)",
+        position: "relative",
       }}
     >
-      <Handle type="target" position={Position.Left} style={{ background: meta.color }} />
+      <Handle type="target" position={Position.Left} style={{ background: meta.color, width: 8, height: 8 }} />
+      {d.aiFlag && (
+        <span
+          title="Inconsistência detectada — veja a central de IA"
+          style={{ position: "absolute", top: 5, left: 6, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "10px solid var(--warn)" }}
+        />
+      )}
       {d.entryId && (
         <button
           className="nodrag"
           onClick={(e) => { e.stopPropagation(); d.onOpen(d.entryId!); }}
           title="abrir editor"
-          style={{ position: "absolute", top: 6, right: 6, padding: "0 6px", fontSize: 13, lineHeight: "18px", background: "transparent", border: "none", color: "var(--muted)" }}
+          style={{ position: "absolute", top: 4, right: 4, padding: "0 5px", fontSize: 13, lineHeight: "18px", background: "transparent", border: "none", color: meta.ink }}
         >⤢</button>
       )}
       <div className="row" style={{ gap: 10, alignItems: "center" }}>
-        <EntryIcon type={d.etype} size={30} color={meta.color} />
+        <EntryIcon type={d.etype} size={proto ? 30 : 24} color={meta.color} />
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 11, color: meta.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>{meta.label}</div>
+          <div style={{ fontSize: 11, color: meta.color, fontWeight: 500 }}>{meta.label}</div>
           {editing ? (
             <input
               autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit}
@@ -69,11 +84,11 @@ function EntryCardNode({ id, data }: NodeProps) {
               style={{ padding: "2px 4px" }}
             />
           ) : (
-            <strong style={{ display: "block", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis" }}>{d.title}</strong>
+            <strong style={{ display: "block", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", fontWeight: proto ? 500 : 400, fontSize: proto ? 15 : 14, color: meta.ink }}>{d.title}</strong>
           )}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} style={{ background: meta.color }} />
+      <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 8, height: 8 }} />
     </div>
   );
 }
@@ -90,6 +105,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
 
   const entryMap = useRef<Record<string, Entry>>({});
   const membersRef = useRef<Record<string, string[]>>({});
+  const aiFlagsRef = useRef<Set<string>>(new Set());
   const nodesRef = useRef<Node[]>([]);
   const dragRef = useRef<{ last: { x: number; y: number }; moved: Set<string> } | null>(null);
 
@@ -105,7 +121,12 @@ export function CanvasView({ projectId }: { projectId: string }) {
     const entry = bn.entryId ? entryMap.current[bn.entryId] : undefined;
     return {
       id: bn.id, type: "entryCard", position: { x: bn.x, y: bn.y },
-      data: { title: entry?.title ?? "(sem ficha)", etype: entry?.type ?? bn.kind, entryId: bn.entryId, onRename: renameEntry, onOpen: setOpenId } satisfies CardData,
+      data: {
+        title: entry?.title ?? "(sem ficha)", etype: entry?.type ?? bn.kind, entryId: bn.entryId,
+        importance: entry?.importance ?? 0, status: entry?.status ?? "draft",
+        aiFlag: bn.entryId ? aiFlagsRef.current.has(bn.entryId) : false,
+        onRename: renameEntry, onOpen: setOpenId,
+      } satisfies CardData,
     };
   }, [renameEntry]);
 
@@ -126,6 +147,11 @@ export function CanvasView({ projectId }: { projectId: string }) {
     const m: Record<string, string[]> = {};
     for (const ms of tree.memberships) (m[ms.containerId] ??= []).push(ms.memberId);
     membersRef.current = m;
+    // marcador da IA: fichas com apontamentos abertos (contradição/lacuna)
+    try {
+      const ck = await api.get<{ checks: { entryId: string | null; kind: string }[] }>(`/projects/${projectId}/ai/checks?status=open`);
+      aiFlagsRef.current = new Set(ck.checks.filter((c) => c.entryId && (c.kind === "inconsistency" || c.kind === "gap")).map((c) => c.entryId!));
+    } catch { aiFlagsRef.current = new Set(); }
     setBoardId(bundle.board.id);
     setNodes(bundle.nodes.map(toRfNode));
     setEdges(bundle.edges.map(toRfEdge));
@@ -275,8 +301,14 @@ export function CanvasView({ projectId }: { projectId: string }) {
         onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
         fitView
       >
-        <Background />
+        <Background color="#d7dbe2" gap={22} />
         <Controls />
+        <MiniMap
+          pannable zoomable
+          nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
+          nodeStrokeWidth={2}
+          style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
+        />
       </ReactFlow>
 
       {openId && (

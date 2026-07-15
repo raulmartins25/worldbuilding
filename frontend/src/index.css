@@ -1,47 +1,72 @@
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1e222b;
-  --border: #2a2f3a;
-  --text: #e6e8ee;
-  --muted: #99a0ad;
-  --accent: #7c5cff;
-  --accent-2: #4cc2ff;
-  color-scheme: dark;
+  /* superfícies — interface neutra e clara */
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --panel-2: #eef0f4;
+  --border: #e2e5ea;
+  --border-strong: #cfd4dc;
+  --text: #1c2027;
+  --muted: #6b7280;
+  --shadow: 0 1px 2px rgba(20, 24, 40, 0.04), 0 2px 8px rgba(20, 24, 40, 0.06);
+
+  /* marca (neutra) — cor de tipo é reservada a significado */
+  --accent: #534ab7;
+  --accent-2: #378add;
+
+  /* estados semânticos (não confundir com cores de tipo) */
+  --warn: #ba7517;          /* aviso da IA */
+  --warn-strong: #b45309;   /* erro / contradição */
+  --success: #0f6e56;       /* canônico / sucesso */
+  --danger: #c0392b;
+
+  /* duas vozes */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
-
 html, body, #root { height: 100%; margin: 0; }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
+  font-weight: 400;
   background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--accent-2); text-decoration: none; }
+a { color: var(--accent); text-decoration: none; }
 
 button {
   font: inherit;
-  padding: 0.5rem 0.9rem;
+  padding: 0.45rem 0.85rem;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
   color: var(--text);
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
-button.primary { background: var(--accent); border-color: transparent; color: white; }
+button:hover { background: var(--panel-2); }
+button.primary { background: var(--accent); border-color: transparent; color: #fff; }
+button.primary:hover { filter: brightness(1.05); }
 button:disabled { opacity: 0.5; cursor: default; }
 
 input, textarea, select {
   font: inherit;
   width: 100%;
-  padding: 0.55rem 0.7rem;
+  padding: 0.5rem 0.7rem;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--panel);
   color: var(--text);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .card {
@@ -49,40 +74,44 @@ input, textarea, select {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem;
+  box-shadow: var(--shadow);
 }
 
-.center-screen {
-  min-height: 100%;
-  display: grid;
-  place-items: center;
-  padding: 2rem;
-}
-
+.center-screen { min-height: 100%; display: grid; place-items: center; padding: 2rem; }
 .stack { display: flex; flex-direction: column; gap: 0.75rem; }
 .row { display: flex; gap: 0.75rem; align-items: center; }
 .muted { color: var(--muted); }
 .grow { flex: 1; }
 
-/* editor Tiptap */
+/* voz do manuscrito — serifa no editor */
 .tiptap-wrap {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--panel-2);
+  background: var(--panel);
 }
 .tiptap-wrap .ProseMirror {
   min-height: 220px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   outline: none;
-  line-height: 1.5;
+  font-family: var(--font-serif);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--text);
 }
-.tiptap-wrap .ProseMirror p { margin: 0 0 0.6em; }
-.tiptap-wrap .ProseMirror h2 { font-size: 1.2rem; margin: 0.4em 0; }
+.tiptap-wrap .ProseMirror p { margin: 0 0 0.7em; }
+.tiptap-wrap .ProseMirror h2 { font-family: var(--font-serif); font-weight: 500; font-size: 1.35rem; margin: 0.5em 0; }
 .tiptap-wrap .ProseMirror ul { padding-left: 1.2em; }
 .tiptap-wrap .ProseMirror blockquote {
-  border-left: 3px solid var(--border);
-  margin: 0.4em 0; padding-left: 0.8em; color: var(--muted);
+  border-left: 3px solid var(--border-strong);
+  margin: 0.5em 0; padding-left: 0.9em; color: var(--muted); font-style: italic;
 }
 .tiptap-wrap .ProseMirror p.is-editor-empty:first-child::before {
   content: "Escreva o conteúdo…";
   color: var(--muted); float: left; height: 0; pointer-events: none;
 }
+
+/* movimento: instantâneo por padrão; anima só o marcado como .fx-* */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+:root.reduce-motion * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

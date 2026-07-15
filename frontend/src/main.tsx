@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
 import { App } from "./App";
+import "@fontsource-variable/source-serif-4";
 import "./index.css";
 import "@xyflow/react/dist/style.css";
 
