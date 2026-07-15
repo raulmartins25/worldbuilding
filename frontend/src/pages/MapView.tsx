@@ -132,7 +132,7 @@ export function MapView({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      {openId && <EntryDrawer entryId={openId} projectId={projectId} onClose={() => setOpenId(null)} />}
+      {openId && <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => setOpenId(null)} />}
     </div>
   );
 }

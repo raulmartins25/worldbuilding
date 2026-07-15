@@ -326,7 +326,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
       </ReactFlow>
 
       {openId && (
-        <EntryDrawer entryId={openId} projectId={projectId} onClose={() => { setOpenId(null); void load(); }} />
+        <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => { setOpenId(null); void load(); }} />
       )}
     </div>
   );

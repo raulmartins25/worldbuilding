@@ -95,7 +95,7 @@ export function TimelineView({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      {openId && <EntryDrawer entryId={openId} projectId={projectId} onClose={() => setOpenId(null)} />}
+      {openId && <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => setOpenId(null)} />}
     </div>
   );
 }

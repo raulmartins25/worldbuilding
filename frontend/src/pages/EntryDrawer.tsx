@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { api } from "../lib/api";
+import { mentionExtension, type MItem } from "../lib/mention";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
 import { INTERVIEWABLE } from "../lib/templates";
@@ -58,8 +59,18 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [focus, setFocus] = useState(false);
+  const entriesRef = useRef<MItem[]>([]);
 
-  const editor = useEditor({ extensions: [StarterKit], content: "" });
+  const linkMention = (mid: string) => {
+    if (mid && mid !== entryId) void api.post(`/projects/${projectId}/relationships`, { sourceId: entryId, targetId: mid, type: "aparece_em" }).catch(() => {});
+  };
+  const editor = useEditor({ extensions: [StarterKit, mentionExtension(() => entriesRef.current, linkMention)], content: "" });
+
+  useEffect(() => {
+    api.get<{ entries: MItem[] }>(`/projects/${projectId}/entries`)
+      .then((r) => { entriesRef.current = r.entries.filter((e) => e.id !== entryId); })
+      .catch(() => {});
+  }, [projectId, entryId]);
 
   async function reload() {
     const r = await api.get<{ entry: FullEntry }>(`/entries/${entryId}`);
@@ -141,7 +152,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
         {tab === "entrevista" && <InterviewTab entryId={entryId} title={title || "personagem"} />}
       </div>
     </div>
-    {focus && <FocusMode entryId={entryId} onClose={() => { setFocus(false); void reload(); }} />}
+    {focus && <FocusMode entryId={entryId} projectId={projectId} onClose={() => { setFocus(false); void reload(); }} />}
     </>
   );
 }

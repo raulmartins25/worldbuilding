@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { IconX, IconVolume, IconVolumeOff } from "@tabler/icons-react";
 import { api } from "../lib/api";
+import { mentionExtension, type MItem } from "../lib/mention";
 
 interface FullEntry { id: string; title: string; body: unknown; type: string; }
 
@@ -30,12 +31,19 @@ function useAmbient() {
   return { on, toggle };
 }
 
-export function FocusMode({ entryId, onClose }: { entryId: string; onClose: () => void }) {
+export function FocusMode({ entryId, projectId, onClose }: { entryId: string; projectId: string; onClose: () => void }) {
   const [entry, setEntry] = useState<FullEntry | null>(null);
-  const editor = useEditor({ extensions: [StarterKit], content: "" });
+  const entriesRef = useRef<MItem[]>([]);
+  const linkMention = (mid: string) => {
+    if (mid && mid !== entryId) void api.post(`/projects/${projectId}/relationships`, { sourceId: entryId, targetId: mid, type: "aparece_em" }).catch(() => {});
+  };
+  const editor = useEditor({ extensions: [StarterKit, mentionExtension(() => entriesRef.current, linkMention)], content: "" });
   const ambient = useAmbient();
 
   useEffect(() => { api.get<{ entry: FullEntry }>(`/entries/${entryId}`).then((r) => setEntry(r.entry)); }, [entryId]);
+  useEffect(() => {
+    api.get<{ entries: MItem[] }>(`/projects/${projectId}/entries`).then((r) => { entriesRef.current = r.entries.filter((e) => e.id !== entryId); }).catch(() => {});
+  }, [projectId, entryId]);
   useEffect(() => {
     const b = entry?.body as { type?: string } | undefined;
     if (editor && b && b.type === "doc") editor.commands.setContent(b as object);
