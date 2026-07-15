@@ -157,6 +157,17 @@ input:focus, textarea:focus, select:focus {
 .focus-editor .ProseMirror p.is-editor-empty:first-child::before {
   content: "Escreva…"; color: #6b6658; float: left; height: 0; pointer-events: none;
 }
+.focus-scene {
+  position: fixed; top: 64px; right: 20px; width: 250px; max-height: 78vh; overflow: auto;
+  background: rgba(30, 28, 36, 0.55); border: 1px solid #2f2c38; border-radius: 10px; padding: 12px;
+  font-family: var(--font-sans);
+}
+.focus-scene-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #8a8474; margin-bottom: 8px; }
+.focus-scene-empty { font-size: 13px; color: #6b6658; }
+.focus-scene-item { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-top: 1px solid #2a2833; }
+.focus-scene-item:first-of-type { border-top: none; }
+.focus-scene-name { font-size: 13px; color: #e9e4d8; }
+.focus-scene-sum { font-size: 12px; color: #8a8474; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 /* ── menções @ ──────────────────────────────────────────────────────────── */
 .mention {

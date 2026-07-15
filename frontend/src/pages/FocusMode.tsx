@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { IconX, IconVolume, IconVolumeOff } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import { mentionExtension, type MItem } from "../lib/mention";
+import { typeMeta } from "../lib/entryTypes";
+import { EntryIcon } from "../lib/EntryIcon";
 
 interface FullEntry { id: string; title: string; body: unknown; type: string; }
+interface SceneEntry { title: string; type: string; summary: string | null; }
+
+// ids das fichas mencionadas (@) no doc
+function mentionIds(editor: Editor | null): string[] {
+  if (!editor) return [];
+  const ids: string[] = [];
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "mention" && node.attrs.id) ids.push(node.attrs.id as string);
+  });
+  return [...new Set(ids)];
+}
 
 // gerador de som ambiente (ruído marrom filtrado, bem baixo) — sem assets
 function useAmbient() {
@@ -33,20 +46,29 @@ function useAmbient() {
 
 export function FocusMode({ entryId, projectId, onClose }: { entryId: string; projectId: string; onClose: () => void }) {
   const [entry, setEntry] = useState<FullEntry | null>(null);
+  const [entryMap, setEntryMap] = useState<Record<string, SceneEntry>>({});
+  const [sceneIds, setSceneIds] = useState<string[]>([]);
   const entriesRef = useRef<MItem[]>([]);
   const linkMention = (mid: string) => {
     if (mid && mid !== entryId) void api.post(`/projects/${projectId}/relationships`, { sourceId: entryId, targetId: mid, type: "aparece_em" }).catch(() => {});
   };
-  const editor = useEditor({ extensions: [StarterKit, mentionExtension(() => entriesRef.current, linkMention)], content: "" });
+  const editor = useEditor({
+    extensions: [StarterKit, mentionExtension(() => entriesRef.current, linkMention)],
+    content: "",
+    onUpdate: ({ editor }) => setSceneIds(mentionIds(editor)),
+  });
   const ambient = useAmbient();
 
   useEffect(() => { api.get<{ entry: FullEntry }>(`/entries/${entryId}`).then((r) => setEntry(r.entry)); }, [entryId]);
   useEffect(() => {
-    api.get<{ entries: MItem[] }>(`/projects/${projectId}/entries`).then((r) => { entriesRef.current = r.entries.filter((e) => e.id !== entryId); }).catch(() => {});
+    api.get<{ entries: (MItem & { summary: string | null })[] }>(`/projects/${projectId}/entries`).then((r) => {
+      entriesRef.current = r.entries.filter((e) => e.id !== entryId);
+      setEntryMap(Object.fromEntries(r.entries.map((e) => [e.id, { title: e.title, type: e.type, summary: e.summary }])));
+    }).catch(() => {});
   }, [projectId, entryId]);
   useEffect(() => {
     const b = entry?.body as { type?: string } | undefined;
-    if (editor && b && b.type === "doc") editor.commands.setContent(b as object);
+    if (editor && b && b.type === "doc") { editor.commands.setContent(b as object); setSceneIds(mentionIds(editor)); }
   }, [editor, entry]);
 
   async function close() {
@@ -72,6 +94,24 @@ export function FocusMode({ entryId, projectId, onClose }: { entryId: string; pr
         <h1 className="focus-title">{entry?.title ?? ""}</h1>
         <div className="focus-editor"><EditorContent editor={editor} /></div>
       </div>
+      <aside className="focus-scene">
+        <div className="focus-scene-title">Nesta cena</div>
+        {sceneIds.length === 0 && <div className="focus-scene-empty">Mencione fichas com @ para vê-las aqui.</div>}
+        {sceneIds.map((id) => {
+          const e = entryMap[id];
+          if (!e) return null;
+          const m = typeMeta(e.type);
+          return (
+            <div key={id} className="focus-scene-item">
+              <EntryIcon type={e.type} size={16} color={m.color} />
+              <div style={{ minWidth: 0 }}>
+                <div className="focus-scene-name">{e.title}</div>
+                {e.summary && <div className="focus-scene-sum">{e.summary}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </aside>
     </div>
   );
 }
