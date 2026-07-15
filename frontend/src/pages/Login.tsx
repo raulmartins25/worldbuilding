@@ -31,7 +31,7 @@ export function Login() {
         <p className="muted" style={{ marginTop: -4 }}>Entrar na sua conta</p>
         <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        {error && <div style={{ color: "#ff6b6b" }}>{error}</div>}
+        {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
         <button className="primary" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</button>
         <div className="muted">Não tem conta? <Link to="/register">Criar conta</Link></div>
       </form>

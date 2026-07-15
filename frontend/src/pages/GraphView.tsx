@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ReactFlow, Background, Controls, MarkerType, type Node, type Edge } from "@xyflow/react";
+import {
+  ReactFlow, Background, Controls, MiniMap, MarkerType, Handle, Position,
+  type Node, type Edge, type NodeProps,
+} from "@xyflow/react";
 import { api } from "../lib/api";
 import { typeMeta, relLabel } from "../lib/entryTypes";
+import { EntryIcon } from "../lib/EntryIcon";
 
 interface GNode { id: string; title: string; type: string; }
 interface GEdge { id: string; sourceId: string; targetId: string; type: string; label: string | null; }
@@ -10,10 +14,26 @@ const REL_COLORS: Record<string, string> = {
   aliado_de: "#3fb950", inimigo_de: "#f85149", pai_de: "#d29922", mae_de: "#db61a2",
   casado_com: "#a371f7", governa: "#58a6ff", pertence_a: "#8b949e", aparece_em: "#39c5cf",
 };
-const edgeColor = (t: string) => REL_COLORS[t] ?? "#6e7681";
+const edgeColor = (t: string) => REL_COLORS[t] ?? "#8b949e";
 const GEN = new Set(["pai_de", "mae_de", "filho_de", "casado_com"]);
 
-// layout força-dirigida (Fruchterman–Reingold simplificado)
+type GData = { title: string; etype: string };
+function GraphCardNode({ data }: NodeProps) {
+  const d = data as GData;
+  const m = typeMeta(d.etype);
+  return (
+    <div style={{ background: m.tint, color: m.ink, border: `1px solid ${m.color}`, borderRadius: 10, padding: "6px 10px", width: 168, display: "flex", gap: 8, alignItems: "center", boxShadow: "0 1px 3px rgba(20,24,40,.10)" }}>
+      <Handle type="target" position={Position.Top} style={{ background: m.color, width: 7, height: 7 }} />
+      <EntryIcon type={d.etype} size={20} color={m.color} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10, color: m.color, fontWeight: 500 }}>{m.label}</div>
+        <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.title}</div>
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ background: m.color, width: 7, height: 7 }} />
+    </div>
+  );
+}
+
 function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number; y: number }> {
   if (ids.length === 0) return {};
   const n = ids.length;
@@ -51,7 +71,6 @@ function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number;
   return pos;
 }
 
-// layout em camadas para genealogia (pais em cima, filhos embaixo)
 function genealogyLayout(edges: GEdge[]) {
   const genEdges = edges.filter((e) => GEN.has(e.type));
   const nodeIds = new Set<string>();
@@ -78,6 +97,7 @@ function genealogyLayout(edges: GEdge[]) {
 export function GraphView({ projectId }: { projectId: string }) {
   const [graph, setGraph] = useState<{ nodes: GNode[]; edges: GEdge[] }>({ nodes: [], edges: [] });
   const [mode, setMode] = useState<"all" | "genealogy">("all");
+  const nodeTypes = useMemo(() => ({ gcard: GraphCardNode }), []);
 
   const load = useCallback(async () => {
     const g = await api.get<{ nodes: GNode[]; edges: GEdge[] }>(`/projects/${projectId}/graph`);
@@ -85,14 +105,9 @@ export function GraphView({ projectId }: { projectId: string }) {
   }, [projectId]);
   useEffect(() => { void load(); }, [load]);
 
-  const nodeFor = (id: string, type: string, title: string, pos: { x: number; y: number }): Node => {
-    const m = typeMeta(type);
-    return {
-      id, position: pos,
-      data: { label: `${m.icon} ${title}\n${m.label}` },
-      style: { background: "var(--panel-2)", color: "var(--text)", border: `1px solid var(--border)`, borderTop: `3px solid ${m.color}`, borderRadius: 10, width: 172, whiteSpace: "pre-line" as const, fontSize: 12, padding: 6 },
-    };
-  };
+  const nodeFor = (id: string, type: string, title: string, pos: { x: number; y: number }): Node => ({
+    id, position: pos, type: "gcard", data: { title, etype: type } satisfies GData,
+  });
   const edgeFor = (id: string, source: string, target: string, type: string): Edge => ({
     id, source, target, label: relLabel(type),
     style: { stroke: edgeColor(type), strokeWidth: 2 },
@@ -117,7 +132,7 @@ export function GraphView({ projectId }: { projectId: string }) {
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 6, borderRadius: 10, border: "1px solid var(--border)" }}>
+      <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 6, borderRadius: 10, border: "1px solid var(--border)", boxShadow: "var(--shadow)" }}>
         <button className={mode === "all" ? "primary" : ""} onClick={() => setMode("all")}>Grafo</button>
         <button className={mode === "genealogy" ? "primary" : ""} onClick={() => setMode("genealogy")}>Genealogia</button>
         <button onClick={load} title="recarregar">↻</button>
@@ -127,9 +142,10 @@ export function GraphView({ projectId }: { projectId: string }) {
           {mode === "genealogy" ? "Sem relações genealógicas (Pai de / Mãe de / Casado com)." : "Sem fichas/relações ainda."}
         </div>
       )}
-      <ReactFlow nodes={rfNodes} edges={rfEdges} fitView minZoom={0.1}>
-        <Background />
+      <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={nodeTypes} fitView minZoom={0.1}>
+        <Background color="#d7dbe2" gap={22} />
         <Controls />
+        <MiniMap pannable zoomable nodeColor={(n) => typeMeta((n.data as GData).etype).color} style={{ background: "var(--panel)", border: "1px solid var(--border)" }} />
       </ReactFlow>
     </div>
   );

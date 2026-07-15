@@ -35,7 +35,7 @@ export function InterviewTab({ entryId, title }: { entryId: string; title: strin
         ))}
         {busy && <div className="muted">{title} está pensando…</div>}
       </div>
-      {error && <div style={{ color: "#ff6b6b" }}>{error}</div>}
+      {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
       <form className="row" onSubmit={ask}>
         <input className="grow" placeholder={`Pergunte a ${title}…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="primary" disabled={busy}>Perguntar</button>

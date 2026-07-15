@@ -32,7 +32,7 @@ export function Register() {
         <input placeholder="Nome" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input type="password" placeholder="Senha (mín. 8)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
-        {error && <div style={{ color: "#ff6b6b" }}>{error}</div>}
+        {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
         <button className="primary" disabled={busy}>{busy ? "Criando…" : "Criar conta"}</button>
         <div className="muted">Já tem conta? <Link to="/login">Entrar</Link></div>
       </form>

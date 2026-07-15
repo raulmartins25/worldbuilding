@@ -54,9 +54,9 @@ export function EntriesView({ projectId }: { projectId: string }) {
           return (
             <div key={en.id} className="card row" style={{ borderLeft: `4px solid ${m.color}` }}>
               <EntryIcon type={en.type} size={22} color={m.color} />
-              <span className="muted" style={{ width: 130, fontSize: 13 }}>{m.label}</span>
-              <strong className="grow">{en.title}</strong>
-              <span className="muted" style={{ fontSize: 13 }}>{STATUS_LABEL[en.status] ?? en.status}</span>
+              <span style={{ width: 140, fontSize: 12, fontWeight: 500, color: m.color }}>{m.label}</span>
+              <strong className="grow" style={{ fontWeight: 500 }}>{en.title}</strong>
+              <span style={{ fontSize: 12, padding: "1px 8px", borderRadius: 999, background: m.tint, color: m.ink }}>{STATUS_LABEL[en.status] ?? en.status}</span>
             </div>
           );
         })}
