@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
+import { ResolvePanel } from "./ResolvePanel";
 
 interface Result { id: string; title: string; type: string; summary: string | null; score: number; }
 interface Check {
@@ -9,10 +10,10 @@ interface Check {
 }
 
 // natureza → título + cor semântica + rótulos de ação (contradição resolve, sugestão explora)
-const GROUPS: { kind: string; title: string; color: string; resolve: string; dismiss: string }[] = [
-  { kind: "inconsistency", title: "Contradições", color: "var(--warn-strong)", resolve: "Resolver", dismiss: "Ignorar" },
-  { kind: "gap", title: "Lacunas", color: "var(--warn)", resolve: "Resolver", dismiss: "Ignorar" },
-  { kind: "suggestion", title: "Sugestões de conexão", color: "var(--accent)", resolve: "Explorar", dismiss: "Dispensar" },
+const GROUPS: { kind: string; title: string; color: string; resolve: string; dismiss: string; chat: boolean }[] = [
+  { kind: "inconsistency", title: "Contradições", color: "var(--warn-strong)", resolve: "Resolver", dismiss: "Ignorar", chat: true },
+  { kind: "gap", title: "Lacunas", color: "var(--warn)", resolve: "Resolver", dismiss: "Ignorar", chat: true },
+  { kind: "suggestion", title: "Sugestões de conexão", color: "var(--accent)", resolve: "Explorar", dismiss: "Dispensar", chat: false },
 ];
 
 export function AIView({ projectId }: { projectId: string }) {
@@ -23,6 +24,7 @@ export function AIView({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<Check | null>(null);
 
   const loadChecks = useCallback(async () => {
     const r = await api.get<{ checks: Check[] }>(`/projects/${projectId}/ai/checks?status=open`);
@@ -120,7 +122,7 @@ export function AIView({ projectId }: { projectId: string }) {
                     <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>envolve: {c.payload.entries.join(", ")}</div>
                   )}
                   <div className="row" style={{ marginTop: 8 }}>
-                    <button onClick={() => setStatus(c.id, "resolved")}>{g.resolve}</button>
+                    <button className={g.chat ? "primary" : ""} onClick={() => (g.chat ? setResolving(c) : setStatus(c.id, "resolved"))}>{g.resolve}</button>
                     <button onClick={() => setStatus(c.id, "ignored")}>{g.dismiss}</button>
                   </div>
                 </div>
@@ -130,6 +132,7 @@ export function AIView({ projectId }: { projectId: string }) {
         );
       })}
       {checks.length === 0 && <p className="muted" style={{ marginTop: "1.5rem" }}>Nenhum apontamento aberto. Rode "Checar consistência" ou "Sugerir ligações".</p>}
+      {resolving && <ResolvePanel projectId={projectId} check={resolving} onDone={(r) => { setResolving(null); if (r) void loadChecks(); }} />}
     </div>
   );
 }

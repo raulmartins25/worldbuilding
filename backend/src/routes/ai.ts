@@ -230,4 +230,57 @@ export async function aiRoutes(app: FastifyInstance) {
     }
     return { suggestions, count: suggestions.length };
   });
+
+  // "resolver = conversa": um turno de conversa que ajuda a costurar a correção
+  app.post("/projects/:pid/ai/resolve", async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { checkId, messages } = z.object({
+      checkId: z.string().uuid(),
+      messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).default([]),
+    }).parse(req.body);
+
+    const [check] = await db.select().from(aiChecks).where(and(eq(aiChecks.id, checkId), eq(aiChecks.projectId, pid)));
+    if (!check) throw httpError(404, "check_not_found");
+
+    const involvedTitles = ((check.payload as { entries?: string[] })?.entries ?? []).map((t) => t.toLowerCase());
+    const es = await db.select().from(entries).where(eq(entries.projectId, pid));
+    const involved = es.filter((e) => involvedTitles.includes(e.title.toLowerCase()));
+    const ctx = involved.map((e) => `- [${e.type}/${e.status}] ${e.title}: ${e.summary ?? "(sem resumo)"}`).join("\n") || "(sem fichas específicas)";
+
+    const sys =
+      `Você é um editor de continuidade de mundos de fantasia ajudando o autor a CORRIGIR uma inconsistência ` +
+      `(não apenas descartá-la). Inconsistência: "${check.title}" — ${check.detail ?? ""}.\nFichas envolvidas:\n${ctx}\n\n` +
+      `Converse de forma breve e concreta, propondo como costurar a correção no mundo. Quando houver uma correção ` +
+      `específica numa ficha, inclua no JSON o campo "suggestion": {"entryTitle":"...","field":"summary"|"status","value":"..."} ` +
+      `(status ∈ draft|canon|archived). Se ainda estiver conversando, use "suggestion": null. Responda SOMENTE JSON: {"reply":"...","suggestion":...}.`;
+
+    const raw = await chat([{ role: "system", content: sys }, ...messages], { json: true, temperature: 0.4 });
+    let parsed: { reply?: string; suggestion?: unknown };
+    try { parsed = JSON.parse(raw); } catch { parsed = { reply: raw, suggestion: null }; }
+    return { reply: parsed.reply ?? "", suggestion: parsed.suggestion ?? null };
+  });
+
+  // aplica a correção proposta a uma ficha e marca o apontamento como resolvido
+  app.post("/ai-checks/:id/apply", async (req) => {
+    const { id } = req.params as { id: string };
+    const [check] = await db.select().from(aiChecks).where(eq(aiChecks.id, id));
+    if (!check) throw httpError(404, "check_not_found");
+    await requireProject(req.user.sub, check.projectId);
+    const { entryTitle, field, value } = z.object({
+      entryTitle: z.string(),
+      field: z.enum(["summary", "status"]),
+      value: z.string(),
+    }).parse(req.body);
+    if (field === "status" && !["draft", "canon", "archived"].includes(value)) throw httpError(400, "invalid_status");
+
+    const es = await db.select().from(entries).where(eq(entries.projectId, check.projectId));
+    const target = es.find((e) => e.title.toLowerCase() === entryTitle.toLowerCase());
+    if (!target) throw httpError(404, "entry_not_found");
+
+    const set = field === "status" ? { status: value as "draft" | "canon" | "archived" } : { summary: value };
+    await db.update(entries).set(set).where(eq(entries.id, target.id));
+    await db.update(aiChecks).set({ status: "resolved", resolvedAt: new Date() }).where(eq(aiChecks.id, id));
+    return { ok: true, entryId: target.id };
+  });
 }
