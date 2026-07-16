@@ -16,6 +16,48 @@ interface BoardNode { id: string; entryId: string | null; kind: string; x: numbe
 interface BoardEdge { id: string; sourceNodeId: string; targetNodeId: string; label: string | null; }
 interface BoardBundle { board: { id: string }; nodes: BoardNode[]; edges: BoardEdge[]; }
 interface Membership { containerId: string; memberId: string; }
+interface GNode { id: string; title: string; type: string; }
+interface GEdge { id: string; sourceId: string; targetId: string; type: string; label: string | null; }
+
+// force-layout compartilhado com a lente Grafo (mesmos nós do quadro, re-arranjados pelas relações)
+function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number; y: number }> {
+  if (ids.length === 0) return {};
+  const n = ids.length;
+  const W = 640, H = 460;
+  const k = Math.sqrt((W * H) / n);
+  const idx: Record<string, number> = Object.fromEntries(ids.map((id, i) => [id, i]));
+  const pos: Record<string, { x: number; y: number }> = {};
+  ids.forEach((id, i) => {
+    const a = (i / n) * 2 * Math.PI;
+    pos[id] = { x: W / 2 + Math.cos(a) * 240 + Math.random() * 8, y: H / 2 + Math.sin(a) * 240 + Math.random() * 8 };
+  });
+  let temp = W / 10;
+  for (let it = 0; it < 300; it++) {
+    const disp = ids.map(() => ({ x: 0, y: 0 }));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      let dx = pos[ids[i]].x - pos[ids[j]].x, dy = pos[ids[i]].y - pos[ids[j]].y;
+      const d = Math.hypot(dx, dy) || 0.01, f = (k * k) / d;
+      dx = (dx / d) * f; dy = (dy / d) * f;
+      disp[i].x += dx; disp[i].y += dy; disp[j].x -= dx; disp[j].y -= dy;
+    }
+    for (const e of edges) {
+      const a = idx[e.sourceId], b = idx[e.targetId];
+      if (a == null || b == null) continue;
+      let dx = pos[ids[a]].x - pos[ids[b]].x, dy = pos[ids[a]].y - pos[ids[b]].y;
+      const d = Math.hypot(dx, dy) || 0.01, f = (d * d) / k;
+      dx = (dx / d) * f; dy = (dy / d) * f;
+      disp[a].x -= dx; disp[a].y -= dy; disp[b].x += dx; disp[b].y += dy;
+    }
+    for (let i = 0; i < n; i++) {
+      disp[i].x += (W / 2 - pos[ids[i]].x) * 0.16;
+      disp[i].y += (H / 2 - pos[ids[i]].y) * 0.16;
+      const d = Math.hypot(disp[i].x, disp[i].y) || 0.01, lim = Math.min(d, temp);
+      pos[ids[i]].x += (disp[i].x / d) * lim; pos[ids[i]].y += (disp[i].y / d) * lim;
+    }
+    temp *= 0.97;
+  }
+  return pos;
+}
 
 const CONTAINS = "__contem__";
 const REL_TYPES = ["aliado_de", "inimigo_de", "pai_de", "mae_de", "casado_com", "governa", "pertence_a", "aparece_em"];
@@ -99,11 +141,15 @@ export function CanvasView({ projectId }: { projectId: string }) {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [lens, setLens] = useState<"quadro" | "grafo">("quadro");
+  const [gNodes, setGNodes, onGNodesChange] = useNodesState<Node>([]);
+  const [gEdges, setGEdges, onGEdgesChange] = useEdgesState<Edge>([]);
   const [newType, setNewType] = useState<EntryType>("character");
   const [newTitle, setNewTitle] = useState("");
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [graphData, setGraphData] = useState<{ nodes: GNode[]; edges: GEdge[] }>({ nodes: [], edges: [] });
   const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
 
@@ -172,11 +218,44 @@ export function CanvasView({ projectId }: { projectId: string }) {
     markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(be.label) },
   });
 
+  // lente Grafo: mesmos cards do quadro, re-arranjados pelas relações (camada sobre o mesmo canvas)
+  const renameInGraph = useCallback((nodeId: string, entryId: string | null, title: string) => {
+    setGNodes((ns) => ns.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, title } } : n)));
+    if (entryId) void api.patch(`/entries/${entryId}`, { title });
+  }, [setGNodes]);
+
+  const buildGraph = useCallback(() => {
+    const g = graphData;
+    const pos = forceLayout(g.nodes.map((n) => n.id), g.edges);
+    setGNodes(g.nodes.map((n) => {
+      const e = entryMap.current[n.id];
+      return {
+        id: n.id, type: "entryCard", position: pos[n.id] ?? { x: 0, y: 0 },
+        data: {
+          title: n.title, etype: n.type, entryId: n.id,
+          importance: e?.importance ?? 0, status: e?.status ?? "draft",
+          aiFlag: aiFlagsRef.current.has(n.id),
+          onRename: renameInGraph, onOpen: setOpenId,
+        } satisfies CardData,
+      };
+    }));
+    setGEdges(g.edges.map((e) => ({
+      id: e.id, source: e.sourceId, target: e.targetId, label: relLabel(e.type) || undefined,
+      style: { stroke: edgeColor(e.type), strokeWidth: 2 },
+      labelStyle: { fill: "var(--text)", fontSize: 11 }, labelBgStyle: { fill: "var(--panel)" },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor(e.type) },
+    })));
+  }, [graphData, setGNodes, setGEdges, renameInGraph]);
+
+  // reconstrói ao entrar na lente Grafo (ou quando os dados do grafo mudam estando nela)
+  useEffect(() => { if (lens === "grafo") buildGraph(); }, [lens, buildGraph]);
+
   const load = useCallback(async () => {
-    const [entriesRes, bundle, tree] = await Promise.all([
+    const [entriesRes, bundle, tree, graph] = await Promise.all([
       api.get<{ entries: Entry[] }>(`/projects/${projectId}/entries`),
       api.get<BoardBundle>(`/projects/${projectId}/board`),
       api.get<{ memberships: Membership[] }>(`/projects/${projectId}/tree`),
+      api.get<{ nodes: GNode[]; edges: GEdge[] }>(`/projects/${projectId}/graph`).catch(() => ({ nodes: [], edges: [] })),
     ]);
     entryMap.current = Object.fromEntries(entriesRes.entries.map((e) => [e.id, e]));
     const m: Record<string, string[]> = {};
@@ -190,6 +269,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
     setBoardId(bundle.board.id);
     setNodes(bundle.nodes.map(toRfNode));
     setEdges(bundle.edges.map(toRfEdge));
+    setGraphData(graph);
   }, [projectId, setNodes, setEdges, toRfNode]);
 
   useEffect(() => { void load(); }, [load]);
@@ -297,16 +377,32 @@ export function CanvasView({ projectId }: { projectId: string }) {
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
-        <form className="row" onSubmit={createCard}>
-          <select value={newType} onChange={(e) => setNewType(e.target.value as EntryType)} style={{ width: 190 }}>
-            {ENTRY_TYPES.map((t) => <option key={t} value={t}>{typeMeta(t).icon} {typeMeta(t).label}</option>)}
-          </select>
-          <input placeholder="novo card…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} style={{ width: 180 }} />
-          <button className="primary">+ Card</button>
-        </form>
-        <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>
+      {/* seletor de lente — camadas sobre o mesmo canvas, sem trocar de tela */}
+      <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 7, display: "flex", gap: 2, background: "var(--panel)", padding: 4, borderRadius: 999, border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(20,24,40,.10)" }}>
+        {([["quadro", "Quadro"], ["grafo", "Grafo"]] as const).map(([k, lbl]) => (
+          <button
+            key={k}
+            onClick={() => setLens(k)}
+            className={lens === k ? "primary" : ""}
+            style={{ borderRadius: 999, padding: "4px 16px", fontSize: 13, border: "none", background: lens === k ? undefined : "transparent" }}
+          >
+            {lbl}
+          </button>
+        ))}
       </div>
+
+      {lens === "quadro" && (
+        <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
+          <form className="row" onSubmit={createCard}>
+            <select value={newType} onChange={(e) => setNewType(e.target.value as EntryType)} style={{ width: 190 }}>
+              {ENTRY_TYPES.map((t) => <option key={t} value={t}>{typeMeta(t).icon} {typeMeta(t).label}</option>)}
+            </select>
+            <input placeholder="novo card…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} style={{ width: 180 }} />
+            <button className="primary">+ Card</button>
+          </form>
+          <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>
+        </div>
+      )}
 
       {pending && (
         <div style={{ position: "absolute", top: 12, right: 12, zIndex: 6, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 10, width: 240 }}>
@@ -322,29 +418,53 @@ export function CanvasView({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {nodes.length === 0 && (
+      {lens === "quadro" && nodes.length === 0 && (
         <div className="muted" style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
           Quadro vazio — crie um card. Conecte arrastando de um card a outro; "Contém" cria contenção (arrastar o contêiner move os membros).
         </div>
       )}
 
-      <ReactFlow
-        nodes={nodes} edges={edges} nodeTypes={nodeTypes}
-        onNodesChange={handleNodesChange} onEdgesChange={onEdgesChange}
-        onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop}
-        onNodesDelete={onNodesDelete} onEdgesDelete={onEdgesDelete} onConnect={onConnect}
-        onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
-        fitView
-      >
-        <Background color={canvasDot(theme)} gap={22} />
-        <Controls />
-        <MiniMap
-          pannable zoomable
-          nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
-          nodeStrokeWidth={2}
-          style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
-        />
-      </ReactFlow>
+      {lens === "quadro" ? (
+        <ReactFlow
+          nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+          onNodesChange={handleNodesChange} onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop}
+          onNodesDelete={onNodesDelete} onEdgesDelete={onEdgesDelete} onConnect={onConnect}
+          onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
+          fitView
+        >
+          <Background color={canvasDot(theme)} gap={22} />
+          <Controls />
+          <MiniMap
+            pannable zoomable
+            nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
+            nodeStrokeWidth={2}
+            style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
+          />
+        </ReactFlow>
+      ) : (
+        <>
+          <ReactFlow
+            nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes}
+            onNodesChange={onGNodesChange} onEdgesChange={onGEdgesChange}
+            fitView minZoom={0.1}
+          >
+            <Background color={canvasDot(theme)} gap={22} />
+            <Controls />
+            <MiniMap
+              pannable zoomable
+              nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
+              nodeStrokeWidth={2}
+              style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
+            />
+          </ReactFlow>
+          {gNodes.length === 0 && (
+            <div className="muted" style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
+              Sem relações ainda — conecte cards no Quadro (arraste de um a outro) para vê-los ligados aqui.
+            </div>
+          )}
+        </>
+      )}
 
       {openId && (
         <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => { setOpenId(null); void load(); }} />
