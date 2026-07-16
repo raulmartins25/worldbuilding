@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { DND_ENTRY } from "./CanvasView";
 
 interface Membership { containerId: string; memberId: string; }
 interface EMeta { title: string; type: string; }
@@ -37,12 +38,18 @@ export function ContainerTree({ projectId, onOpen, onPlot }: { projectId: string
     const meta = typeMeta(emap[id]?.type ?? "note");
     return (
       <div key={id}>
-        <div className="row" style={{ gap: 3, paddingLeft: depth * 12, minHeight: 24 }}>
+        <div
+          className="row"
+          style={{ gap: 3, paddingLeft: depth * 12, minHeight: 24 }}
+          draggable
+          onDragStart={(e) => { e.dataTransfer.setData(DND_ENTRY, id); e.dataTransfer.effectAllowed = "copy"; }}
+          title="arraste para o quadro para plotar"
+        >
           {isContainer ? (
             <button onClick={() => toggle(id)} style={{ width: 16, padding: 0, border: "none", background: "transparent", color: "var(--muted)", fontSize: 10 }}>{open ? "▾" : "▸"}</button>
           ) : <span style={{ width: 16 }} />}
           <EntryIcon type={emap[id]?.type ?? "note"} size={15} color={meta.color} />
-          <span className="grow" onClick={() => onOpen(id)} title={emap[id]?.title} style={{ cursor: "pointer", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span className="grow" onClick={() => onOpen(id)} title={emap[id]?.title} style={{ cursor: "grab", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {emap[id]?.title ?? "…"}
           </span>
           {isContainer && (

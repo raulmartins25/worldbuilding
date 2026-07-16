@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType,
   useNodesState, useEdgesState,
-  type Node, type Edge, type NodeProps, type NodeChange, type Connection,
+  type Node, type Edge, type NodeProps, type NodeChange, type Connection, type ReactFlowInstance,
 } from "@xyflow/react";
 import { api } from "../lib/api";
 import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
@@ -27,13 +27,15 @@ interface GEdge { id: string; sourceId: string; targetId: string; type: string; 
 function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number; y: number }> {
   if (ids.length === 0) return {};
   const n = ids.length;
-  const W = 640, H = 460;
-  const k = Math.sqrt((W * H) / n);
+  // área cresce com o nº de nós → não amontoa quando o mundo é grande
+  const side = Math.max(560, Math.round(190 * Math.sqrt(n)));
+  const W = side, H = side;
+  const k = Math.sqrt((W * H) / n) * 0.9;
   const idx: Record<string, number> = Object.fromEntries(ids.map((id, i) => [id, i]));
   const pos: Record<string, { x: number; y: number }> = {};
   ids.forEach((id, i) => {
     const a = (i / n) * 2 * Math.PI;
-    pos[id] = { x: W / 2 + Math.cos(a) * 240 + Math.random() * 8, y: H / 2 + Math.sin(a) * 240 + Math.random() * 8 };
+    pos[id] = { x: W / 2 + Math.cos(a) * side * 0.36 + Math.random() * 8, y: H / 2 + Math.sin(a) * side * 0.36 + Math.random() * 8 };
   });
   let temp = W / 10;
   for (let it = 0; it < 300; it++) {
@@ -53,17 +55,31 @@ function forceLayout(ids: string[], edges: GEdge[]): Record<string, { x: number;
       disp[a].x -= dx; disp[a].y -= dy; disp[b].x += dx; disp[b].y += dy;
     }
     for (let i = 0; i < n; i++) {
-      disp[i].x += (W / 2 - pos[ids[i]].x) * 0.16;
-      disp[i].y += (H / 2 - pos[ids[i]].y) * 0.16;
+      disp[i].x += (W / 2 - pos[ids[i]].x) * 0.12;
+      disp[i].y += (H / 2 - pos[ids[i]].y) * 0.12;
       const d = Math.hypot(disp[i].x, disp[i].y) || 0.01, lim = Math.min(d, temp);
       pos[ids[i]].x += (disp[i].x / d) * lim; pos[ids[i]].y += (disp[i].y / d) * lim;
     }
     temp *= 0.97;
   }
+  // separação final: evita que os cards (~210px) se sobreponham
+  const MIN = 220;
+  for (let it = 0; it < 60; it++) {
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      let dx = pos[ids[i]].x - pos[ids[j]].x, dy = pos[ids[i]].y - pos[ids[j]].y;
+      const d = Math.hypot(dx, dy) || 0.01;
+      if (d < MIN) {
+        const push = (MIN - d) / 2;
+        dx = (dx / d) * push; dy = (dy / d) * push;
+        pos[ids[i]].x += dx; pos[ids[i]].y += dy; pos[ids[j]].x -= dx; pos[ids[j]].y -= dy;
+      }
+    }
+  }
   return pos;
 }
 
 const CONTAINS = "__contem__";
+export const DND_ENTRY = "application/loregrid-entry"; // MIME do arrastar ficha (árvore → quadro)
 const REL_TYPES = ["aliado_de", "inimigo_de", "pai_de", "mae_de", "casado_com", "governa", "pertence_a", "aparece_em"];
 const REL_COLORS: Record<string, string> = {
   aliado_de: "#3fb950", inimigo_de: "#f85149", pai_de: "#d29922", mae_de: "#db61a2",
@@ -153,6 +169,7 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
   const [selected, setSelected] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: GNode[]; edges: GEdge[] }>({ nodes: [], edges: [] });
+  const [rfi, setRfi] = useState<ReactFlowInstance | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
 
@@ -378,8 +395,30 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => onNodesChange(changes), [onNodesChange]);
 
+  // arrastar ficha da árvore (sidebar) e soltar no quadro → plota o card (+ membros se contêiner) na posição do drop
+  const onDragOver = useCallback((e: DragEvent) => {
+    if (e.dataTransfer.types.includes(DND_ENTRY)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }
+  }, []);
+  const onDrop = useCallback((e: DragEvent) => {
+    if (lens !== "quadro") return;
+    const entryId = e.dataTransfer.getData(DND_ENTRY);
+    const bid = boardIdRef.current;
+    if (!entryId || !bid) return;
+    e.preventDefault();
+    const pos = rfi ? rfi.screenToFlowPosition({ x: e.clientX, y: e.clientY }) : { x: 80, y: 80 };
+    void (async () => {
+      let nodeId = nodesRef.current.find((n) => (n.data as CardData).entryId === entryId)?.id;
+      if (!nodeId) {
+        const r = await api.post<{ node: { id: string } }>(`/boards/${bid}/nodes`, { entryId, x: pos.x, y: pos.y });
+        nodeId = r.node.id;
+      }
+      await api.post(`/boards/${bid}/expand-container`, { containerNodeId: nodeId }).catch(() => {});
+      await load();
+    })();
+  }, [lens, rfi, load]);
+
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div style={{ width: "100%", height: "100%", position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
       {/* seletor de lente do canvas — Quadro↔Grafo compartilham o React Flow (mesmos nós, outra lente) */}
       {(lens === "quadro" || lens === "grafo") && (
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 7, display: "flex", gap: 2, background: "var(--panel)", padding: 4, borderRadius: 999, border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(20,24,40,.10)" }}>
@@ -429,32 +468,17 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
         </div>
       )}
 
-      {lens === "quadro" && (
-        <ReactFlow
-          nodes={nodes} edges={edges} nodeTypes={nodeTypes}
-          onNodesChange={handleNodesChange} onEdgesChange={onEdgesChange}
-          onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop}
-          onNodesDelete={onNodesDelete} onEdgesDelete={onEdgesDelete} onConnect={onConnect}
-          onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
-          fitView
-        >
-          <Background color={canvasDot(theme)} gap={22} />
-          <Controls />
-          <MiniMap
-            pannable zoomable
-            nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
-            nodeStrokeWidth={2}
-            style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
-          />
-        </ReactFlow>
-      )}
-
-      {lens === "grafo" && (
-        <>
+      {/* camada da lente ativa — remonta ao trocar (key) → transição suave (.lens-fade, respeita reduce-motion) */}
+      <div key={lens} className="lens-fade" style={{ position: "absolute", inset: 0, zIndex: 1 }}>
+        {lens === "quadro" && (
           <ReactFlow
-            nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes}
-            onNodesChange={onGNodesChange} onEdgesChange={onGEdgesChange}
-            fitView minZoom={0.1}
+            nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+            onNodesChange={handleNodesChange} onEdgesChange={onEdgesChange}
+            onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop}
+            onNodesDelete={onNodesDelete} onEdgesDelete={onEdgesDelete} onConnect={onConnect}
+            onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
+            onInit={setRfi}
+            fitView
           >
             <Background color={canvasDot(theme)} gap={22} />
             <Controls />
@@ -465,16 +489,35 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
               style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
             />
           </ReactFlow>
-          {gNodes.length === 0 && (
-            <div className="muted" style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
-              Sem relações ainda — conecte cards no Quadro (arraste de um a outro) para vê-los ligados aqui.
-            </div>
-          )}
-        </>
-      )}
+        )}
 
-      {lens === "mapa" && <MapView projectId={projectId} />}
-      {lens === "linha" && <TimelineView projectId={projectId} />}
+        {lens === "grafo" && (
+          <>
+            <ReactFlow
+              nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes}
+              onNodesChange={onGNodesChange} onEdgesChange={onGEdgesChange}
+              fitView minZoom={0.1}
+            >
+              <Background color={canvasDot(theme)} gap={22} />
+              <Controls />
+              <MiniMap
+                pannable zoomable
+                nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
+                nodeStrokeWidth={2}
+                style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
+              />
+            </ReactFlow>
+            {gNodes.length === 0 && (
+              <div className="muted" style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
+                Sem relações ainda — conecte cards no Quadro (arraste de um a outro) para vê-los ligados aqui.
+              </div>
+            )}
+          </>
+        )}
+
+        {lens === "mapa" && <MapView projectId={projectId} />}
+        {lens === "linha" && <TimelineView projectId={projectId} />}
+      </div>
 
       {openId && (
         <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => { setOpenId(null); void load(); }} />

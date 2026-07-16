@@ -110,6 +110,10 @@ input:focus, textarea:focus, select:focus {
   color: var(--muted); float: left; height: 0; pointer-events: none;
 }
 
+/* troca de lente: transição rara → anima (respeita reduce-motion via regra global abaixo) */
+.lens-fade { animation: lensFade 0.22s ease; }
+@keyframes lensFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
 /* movimento: instantâneo por padrão; anima só o marcado como .fx-* */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
