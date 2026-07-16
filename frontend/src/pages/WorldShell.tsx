@@ -4,26 +4,24 @@ import { api } from "../lib/api";
 import type { Project } from "../lib/types";
 import { ErrorBoundary } from "../lib/ErrorBoundary";
 import { THEMES, ThemeCtx, type ThemeName } from "../lib/theme";
-import { CanvasView } from "./CanvasView";
+import { CanvasView, type Lens } from "./CanvasView";
 import { EntriesView } from "./EntriesView";
-import { GraphView } from "./GraphView";
 import { AIView } from "./AIView";
-import { MapView } from "./MapView";
-import { TimelineView } from "./TimelineView";
 import { CommandPalette } from "./CommandPalette";
 import { ContainerTree } from "./ContainerTree";
 
-const LENS_LABEL: Record<string, string> = {
-  "": "Quadro", entries: "Fichas", map: "Mapa", timeline: "Linha do tempo", graph: "Grafo", ia: "Central de IA",
-};
-
-const NAV = [
-  { to: "", label: "Quadro", end: true },
-  { to: "entries", label: "Fichas" },
-  { to: "map", label: "Mapa" },
-  { to: "timeline", label: "Linha do tempo" },
-  { to: "graph", label: "Grafo" },
-  { to: "ia", label: "IA" },
+// lentes espaciais: camadas sobre o MESMO canvas-home (rota índice), alternadas sem trocar de tela
+const LENSES: { key: Lens; label: string }[] = [
+  { key: "quadro", label: "Quadro" },
+  { key: "grafo", label: "Grafo" },
+  { key: "mapa", label: "Mapa" },
+  { key: "linha", label: "Linha do tempo" },
+];
+const LENS_TITLE: Record<Lens, string> = { quadro: "Quadro", grafo: "Grafo", mapa: "Mapa", linha: "Linha do tempo" };
+// seções com página própria (rota)
+const SECTIONS: { to: string; label: string; title: string }[] = [
+  { to: "entries", label: "Fichas", title: "Fichas" },
+  { to: "ia", label: "IA", title: "Central de IA" },
 ];
 
 export function WorldShell() {
@@ -34,6 +32,7 @@ export function WorldShell() {
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [theme, setTheme] = useState<ThemeName>("default");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [lens, setLens] = useState<Lens>("quadro");
 
   // Cmd/Ctrl+K abre a command palette (espinha por teclado)
   useEffect(() => {
@@ -45,7 +44,12 @@ export function WorldShell() {
   }, []);
 
   const seg = (location.pathname.split(`/worlds/${pid}`)[1] ?? "").replace(/^\//, "");
-  const lens = LENS_LABEL[seg] ?? "Quadro";
+  const onIndex = seg === "";
+  const section = SECTIONS.find((s) => s.to === seg);
+  const crumb = onIndex ? LENS_TITLE[lens] : (section?.title ?? "Mundo");
+
+  // seleciona uma lente espacial: garante o canvas-home (rota índice) e troca a camada
+  const selectLens = (l: Lens) => { setLens(l); if (!onIndex) navigate(`/worlds/${pid}`); };
 
   useEffect(() => {
     if (!pid) return;
@@ -74,6 +78,12 @@ export function WorldShell() {
     if (pid) await api.patch(`/projects/${pid}`, { settings: s });
   }
 
+  const navItemStyle = (active: boolean) => ({
+    padding: "0.5rem 0.7rem", borderRadius: 8, border: "none", textAlign: "left" as const, cursor: "pointer",
+    background: active ? "var(--panel-2)" : "transparent",
+    color: active ? "var(--text)" : "var(--muted)",
+  });
+
   return (
     <ThemeCtx.Provider value={theme}>
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", height: "100%" }}>
@@ -85,26 +95,23 @@ export function WorldShell() {
             </strong>
           </div>
           <nav className="stack">
-            {NAV.map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.end}
-                style={({ isActive }) => ({
-                  padding: "0.5rem 0.7rem",
-                  borderRadius: 8,
-                  background: isActive ? "var(--panel-2)" : "transparent",
-                  color: isActive ? "var(--text)" : "var(--muted)",
-                })}
-              >
-                {n.label}
+            <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em", padding: "0 0.7rem 2px" }}>Lentes</div>
+            {LENSES.map((l) => (
+              <button key={l.key} onClick={() => selectLens(l.key)} style={navItemStyle(onIndex && lens === l.key)}>
+                {l.label}
+              </button>
+            ))}
+            <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em", padding: "10px 0.7rem 2px" }}>Seções</div>
+            {SECTIONS.map((s) => (
+              <NavLink key={s.to} to={s.to} style={({ isActive }) => navItemStyle(isActive)}>
+                {s.label}
               </NavLink>
             ))}
           </nav>
           <ContainerTree
             projectId={pid!}
-            onOpen={(id) => navigate(`/worlds/${pid}?open=${id}`)}
-            onPlot={(id) => navigate(`/worlds/${pid}?plot=${id}`)}
+            onOpen={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?open=${id}`); }}
+            onPlot={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?plot=${id}`); }}
           />
           <div className="stack" style={{ marginTop: "auto", gap: 4 }}>
             <label className="muted" style={{ fontSize: 12 }}>Tema do mundo</label>
@@ -118,25 +125,22 @@ export function WorldShell() {
           <div className="row" style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", background: "var(--panel)", fontSize: 13, flexShrink: 0 }}>
             <span className="muted">{project?.name ?? "Mundo"}</span>
             <span className="muted">›</span>
-            <span style={{ fontWeight: 500 }}>{lens}</span>
+            <span style={{ fontWeight: 500 }}>{crumb}</span>
             <span className="grow" />
             <button onClick={() => setPaletteOpen(true)} title="Buscar / comandos (Ctrl/Cmd+K)" style={{ fontSize: 12, padding: "2px 8px" }}>⌘K</button>
           </div>
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-            <ErrorBoundary key={location.pathname}>
+            <ErrorBoundary key={onIndex ? `index:${lens}` : location.pathname}>
               <Routes>
-                <Route index element={<CanvasView projectId={pid!} />} />
+                <Route index element={<CanvasView projectId={pid!} lens={lens} onLens={setLens} />} />
                 <Route path="entries" element={<EntriesView projectId={pid!} />} />
-                <Route path="map" element={<MapView projectId={pid!} />} />
-                <Route path="timeline" element={<TimelineView projectId={pid!} />} />
-                <Route path="graph" element={<GraphView projectId={pid!} />} />
                 <Route path="ia" element={<AIView projectId={pid!} />} />
               </Routes>
             </ErrorBoundary>
           </div>
         </main>
       </div>
-      {pid && <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projectId={pid} />}
+      {pid && <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projectId={pid} onLens={selectLens} />}
     </ThemeCtx.Provider>
   );
 }

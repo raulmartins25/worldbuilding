@@ -5,10 +5,11 @@ import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
 import type { Entry } from "../lib/types";
+import type { Lens } from "./CanvasView";
 
 interface Cmd { id: string; label: string; hint?: string; icon?: ReactNode; run: () => void | Promise<void>; }
 
-export function CommandPalette({ open, onClose, projectId }: { open: boolean; onClose: () => void; projectId: string }) {
+export function CommandPalette({ open, onClose, projectId, onLens }: { open: boolean; onClose: () => void; projectId: string; onLens: (l: Lens) => void }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -23,18 +24,19 @@ export function CommandPalette({ open, onClose, projectId }: { open: boolean; on
   }, [open, projectId]);
 
   const go = (seg: string) => { navigate(`/worlds/${projectId}${seg ? "/" + seg : ""}`); onClose(); };
+  const goLens = (l: Lens) => { onLens(l); onClose(); };
 
   const commands: Cmd[] = useMemo(() => {
     const lenses: Cmd[] = [
-      { id: "l-quadro", label: "Ir para o Quadro", run: () => go("") },
+      { id: "l-quadro", label: "Ir para o Quadro", hint: "lente", run: () => goLens("quadro") },
+      { id: "l-grafo", label: "Ir para o Grafo", hint: "lente", run: () => goLens("grafo") },
+      { id: "l-mapa", label: "Ir para o Mapa", hint: "lente", run: () => goLens("mapa") },
+      { id: "l-timeline", label: "Ir para a Linha do tempo", hint: "lente", run: () => goLens("linha") },
       { id: "l-fichas", label: "Ir para Fichas", run: () => go("entries") },
-      { id: "l-mapa", label: "Ir para o Mapa", run: () => go("map") },
-      { id: "l-timeline", label: "Ir para a Linha do tempo", run: () => go("timeline") },
-      { id: "l-grafo", label: "Ir para o Grafo", run: () => go("graph") },
       { id: "l-ia", label: "Ir para a Central de IA", run: () => go("ia") },
     ];
     const actions: Cmd[] = [
-      { id: "a-new", label: "Nova ficha no Quadro", hint: "criar", run: () => go("") },
+      { id: "a-new", label: "Nova ficha no Quadro", hint: "criar", run: () => goLens("quadro") },
       {
         id: "a-check", label: "Checar consistência (IA)", hint: "IA",
         run: async () => { onClose(); await api.post(`/projects/${projectId}/ai/check`).catch(() => {}); navigate(`/worlds/${projectId}/ia`); },

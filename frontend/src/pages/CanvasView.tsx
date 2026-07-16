@@ -11,6 +11,10 @@ import { EntryIcon } from "../lib/EntryIcon";
 import { useSearchParams } from "react-router-dom";
 import { useTheme, canvasDot } from "../lib/theme";
 import { EntryDrawer } from "./EntryDrawer";
+import { MapView } from "./MapView";
+import { TimelineView } from "./TimelineView";
+
+export type Lens = "quadro" | "grafo" | "mapa" | "linha";
 
 interface BoardNode { id: string; entryId: string | null; kind: string; x: number; y: number; }
 interface BoardEdge { id: string; sourceNodeId: string; targetNodeId: string; label: string | null; }
@@ -137,11 +141,10 @@ function EntryCardNode({ id, data }: NodeProps) {
   );
 }
 
-export function CanvasView({ projectId }: { projectId: string }) {
+export function CanvasView({ projectId, lens, onLens }: { projectId: string; lens: Lens; onLens: (l: Lens) => void }) {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [lens, setLens] = useState<"quadro" | "grafo">("quadro");
   const [gNodes, setGNodes, onGNodesChange] = useNodesState<Node>([]);
   const [gEdges, setGEdges, onGEdgesChange] = useEdgesState<Edge>([]);
   const [newType, setNewType] = useState<EntryType>("character");
@@ -377,19 +380,21 @@ export function CanvasView({ projectId }: { projectId: string }) {
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      {/* seletor de lente — camadas sobre o mesmo canvas, sem trocar de tela */}
-      <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 7, display: "flex", gap: 2, background: "var(--panel)", padding: 4, borderRadius: 999, border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(20,24,40,.10)" }}>
-        {([["quadro", "Quadro"], ["grafo", "Grafo"]] as const).map(([k, lbl]) => (
-          <button
-            key={k}
-            onClick={() => setLens(k)}
-            className={lens === k ? "primary" : ""}
-            style={{ borderRadius: 999, padding: "4px 16px", fontSize: 13, border: "none", background: lens === k ? undefined : "transparent" }}
-          >
-            {lbl}
-          </button>
-        ))}
-      </div>
+      {/* seletor de lente do canvas — Quadro↔Grafo compartilham o React Flow (mesmos nós, outra lente) */}
+      {(lens === "quadro" || lens === "grafo") && (
+        <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 7, display: "flex", gap: 2, background: "var(--panel)", padding: 4, borderRadius: 999, border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(20,24,40,.10)" }}>
+          {([["quadro", "Quadro"], ["grafo", "Grafo"]] as const).map(([k, lbl]) => (
+            <button
+              key={k}
+              onClick={() => onLens(k)}
+              className={lens === k ? "primary" : ""}
+              style={{ borderRadius: 999, padding: "4px 16px", fontSize: 13, border: "none", background: lens === k ? undefined : "transparent" }}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
 
       {lens === "quadro" && (
         <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
@@ -424,7 +429,7 @@ export function CanvasView({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {lens === "quadro" ? (
+      {lens === "quadro" && (
         <ReactFlow
           nodes={nodes} edges={edges} nodeTypes={nodeTypes}
           onNodesChange={handleNodesChange} onEdgesChange={onEdgesChange}
@@ -442,7 +447,9 @@ export function CanvasView({ projectId }: { projectId: string }) {
             style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
           />
         </ReactFlow>
-      ) : (
+      )}
+
+      {lens === "grafo" && (
         <>
           <ReactFlow
             nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes}
@@ -465,6 +472,9 @@ export function CanvasView({ projectId }: { projectId: string }) {
           )}
         </>
       )}
+
+      {lens === "mapa" && <MapView projectId={projectId} />}
+      {lens === "linha" && <TimelineView projectId={projectId} />}
 
       {openId && (
         <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => { setOpenId(null); void load(); }} />
