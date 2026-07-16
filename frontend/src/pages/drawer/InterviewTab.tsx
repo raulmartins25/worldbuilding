@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api } from "../../lib/api";
+import { streamPost } from "../../lib/api";
 
 interface Msg { role: "user" | "char"; content: string; }
 
@@ -12,12 +12,22 @@ export function InterviewTab({ entryId, title }: { entryId: string; title: strin
   async function ask(e: FormEvent) {
     e.preventDefault();
     const question = q.trim();
-    if (!question) return;
-    setMsgs((m) => [...m, { role: "user", content: question }]);
+    if (!question || busy) return;
     setQ(""); setBusy(true); setError(null);
+    // adiciona a pergunta e uma bolha vazia do personagem, preenchida ao vivo pelo stream
+    setMsgs((m) => [...m, { role: "user", content: question }, { role: "char", content: "" }]);
+    const appendToLast = (delta: string) =>
+      setMsgs((m) => {
+        const copy = m.slice();
+        const last = copy[copy.length - 1];
+        copy[copy.length - 1] = { ...last, content: last.content + delta };
+        return copy;
+      });
     try {
-      const r = await api.post<{ answer: string }>(`/entries/${entryId}/ai/interview`, { question });
-      setMsgs((m) => [...m, { role: "char", content: r.answer }]);
+      await streamPost(`/entries/${entryId}/ai/interview`, { question }, (ev) => {
+        if (ev.delta) appendToLast(ev.delta);
+        if (ev.error) setError(ev.error);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "erro");
     } finally { setBusy(false); }
@@ -27,13 +37,18 @@ export function InterviewTab({ entryId, title }: { entryId: string; title: strin
     <div className="stack">
       <p className="muted" style={{ fontSize: 13 }}>Converse com <strong>{title}</strong> em 1ª pessoa (baseado no contexto do mundo).</p>
       <div className="stack" style={{ maxHeight: 340, overflow: "auto" }}>
-        {msgs.map((m, i) => (
-          <div key={i} className="card" style={{ padding: 8, background: m.role === "user" ? "var(--panel-2)" : "var(--panel)", borderLeft: m.role === "char" ? "3px solid var(--accent)" : undefined }}>
-            <div className="muted" style={{ fontSize: 11, marginBottom: 2 }}>{m.role === "user" ? "você" : title}</div>
-            <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
-          </div>
-        ))}
-        {busy && <div className="muted">{title} está pensando…</div>}
+        {msgs.map((m, i) => {
+          const streaming = busy && i === msgs.length - 1 && m.role === "char";
+          return (
+            <div key={i} className="card" style={{ padding: 8, background: m.role === "user" ? "var(--panel-2)" : "var(--panel)", borderLeft: m.role === "char" ? "3px solid var(--accent)" : undefined }}>
+              <div className="muted" style={{ fontSize: 11, marginBottom: 2 }}>{m.role === "user" ? "você" : title}</div>
+              <div style={{ whiteSpace: "pre-wrap" }}>
+                {m.content || (streaming ? <span className="muted">{title} está pensando…</span> : null)}
+                {streaming && m.content && <span className="stream-caret">▍</span>}
+              </div>
+            </div>
+          );
+        })}
       </div>
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
       <form className="row" onSubmit={ask}>

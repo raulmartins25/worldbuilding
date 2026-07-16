@@ -114,6 +114,10 @@ input:focus, textarea:focus, select:focus {
 .lens-fade { animation: lensFade 0.22s ease; }
 @keyframes lensFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
+/* caret de "digitando" no streaming da entrevista */
+.stream-caret { color: var(--accent); animation: streamBlink 1s step-end infinite; margin-left: 1px; }
+@keyframes streamBlink { 50% { opacity: 0; } }
+
 /* movimento: instantâneo por padrão; anima só o marcado como .fx-* */
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { entries, relationships, memberships, attributes, aiChecks } from "../db/schema";
 import { httpError, requireEntry, requireProject } from "../lib/guard";
-import { aiEnabled, embed, chat } from "../lib/openai";
+import { aiEnabled, embed, chat, chatStream } from "../lib/openai";
 import { embedEntry, buildEntryText } from "../lib/embedding";
 
 // monta um retrato textual compacto do mundo para a IA
@@ -179,23 +179,39 @@ export async function aiRoutes(app: FastifyInstance) {
   });
 
   // entrevistar personagem: responde em 1ª pessoa a partir do contexto (RAG)
-  app.post("/entries/:id/ai/interview", async (req) => {
+  app.post("/entries/:id/ai/interview", async (req, reply) => {
     const { id } = req.params as { id: string };
     const entry = await requireEntry(req.user.sub, id);
     const { question } = z.object({ question: z.string().min(1) }).parse(req.body);
     const { text } = await buildEntryContext(id);
-    const answer = await chat([
+    const messages = [
       {
-        role: "system",
+        role: "system" as const,
         content:
           `Você é ${entry.title}, um(a) ${entry.type} de um mundo de fantasia. Responda SEMPRE em ` +
           "primeira pessoa, incorporando o personagem (tom, voz, personalidade coerentes). Baseie-se no " +
           "CONTEXTO abaixo; se algo não estiver nele, pode improvisar de forma plausível SEM contradizer os " +
           "fatos dados. Nunca saia do personagem nem mencione que é uma IA.\n\nCONTEXTO:\n" + text,
       },
-      { role: "user", content: question },
-    ], { temperature: 0.85 });
-    return { answer };
+      { role: "user" as const, content: question },
+    ];
+
+    // SSE: a resposta é transmitida token a token (personagem "digitando" ao vivo)
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no", // nginx: não bufferizar este response
+    });
+    const send = (obj: unknown) => reply.raw.write(`data: ${JSON.stringify(obj)}\n\n`);
+    try {
+      await chatStream(messages, { temperature: 0.85 }, (delta) => send({ delta }));
+      send({ done: true });
+    } catch (e) {
+      send({ error: e instanceof Error ? e.message : "erro" });
+    }
+    reply.raw.end();
   });
 
   // sugerir ligações: a IA propõe novas relações; grava como ai_checks(kind=suggestion)
