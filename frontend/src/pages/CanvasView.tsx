@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
-  ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType,
+  ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, NodeResizer,
   useNodesState, useEdgesState,
   type Node, type Edge, type NodeProps, type NodeChange, type Connection, type ReactFlowInstance,
 } from "@xyflow/react";
@@ -18,7 +18,7 @@ import { TimelineView } from "./TimelineView";
 
 export type Lens = "quadro" | "grafo" | "mapa" | "linha";
 
-interface BoardNode { id: string; entryId: string | null; kind: string; x: number; y: number; }
+interface BoardNode { id: string; entryId: string | null; kind: string; x: number; y: number; width: number | null; height: number | null; style: Record<string, unknown>; }
 interface BoardEdge { id: string; sourceNodeId: string; targetNodeId: string; label: string | null; }
 interface BoardBundle { board: { id: string }; nodes: BoardNode[]; edges: BoardEdge[]; }
 interface Membership { containerId: string; memberId: string; }
@@ -114,6 +114,39 @@ function roleLine(d: { etype: string; importance: number; status: string }): str
 
 // iniciais para gente (RS, KE); os demais tipos usam o ícone
 const initials = (t: string) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+
+const FRAME_COLOR = "#8891a7";
+
+type FrameData = {
+  label: string; color: string;
+  onRename: (id: string, label: string) => void;
+  onResize: (id: string, p: { x: number; y: number; width: number; height: number }) => void;
+};
+
+// moldura: região titulada que agrupa cards. Arrastar a moldura leva os cards sobre ela.
+function FrameNode({ id, data, selected }: NodeProps) {
+  const d = data as FrameData;
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(d.label);
+  useEffect(() => setVal(d.label), [d.label]);
+  const commit = () => { setEditing(false); if (val.trim() && val !== d.label) d.onRename(id, val.trim()); };
+  return (
+    <>
+      <NodeResizer color={d.color} isVisible={!!selected} minWidth={200} minHeight={140}
+        onResizeEnd={(_e, p) => d.onResize(id, { x: p.x, y: p.y, width: p.width, height: p.height })} />
+      <div style={{ width: "100%", height: "100%", borderRadius: 14, border: `1.5px solid ${d.color}`, background: `color-mix(in srgb, ${d.color} 7%, transparent)`, boxSizing: "border-box" }}>
+        <div className="nodrag" onDoubleClick={() => setEditing(true)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, margin: 8, padding: "3px 10px", borderRadius: 8, background: `color-mix(in srgb, ${d.color} 18%, var(--panel))`, color: d.color, fontSize: 13, fontWeight: 500, cursor: "text" }}>
+          {editing ? (
+            <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit}
+              onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+              style={{ padding: "0 2px", fontSize: 13, width: 150 }} />
+          ) : (<>▦ {d.label}</>)}
+        </div>
+      </div>
+    </>
+  );
+}
 
 function EntryCardNode({ id, data }: NodeProps) {
   const d = data as CardData;
@@ -253,17 +286,37 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
   const dragRef = useRef<{ last: { x: number; y: number }; moved: Set<string> } | null>(null);
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
-  const nodeTypes = useMemo(() => ({ entryCard: EntryCardNode }), []);
+  const nodeTypes = useMemo(() => ({ entryCard: EntryCardNode, frame: FrameNode }), []);
 
   const renameEntry = useCallback((nodeId: string, entryId: string | null, title: string) => {
     setNodes((ns) => ns.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, title } } : n)));
     if (entryId) void api.patch(`/entries/${entryId}`, { title });
   }, [setNodes]);
 
+  const renameFrame = useCallback((nodeId: string, label: string) => {
+    setNodes((ns) => ns.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, label } } : n)));
+    const color = (nodesRef.current.find((n) => n.id === nodeId)?.data as FrameData | undefined)?.color ?? FRAME_COLOR;
+    void api.patch(`/board-nodes/${nodeId}`, { style: { label, color } });
+  }, [setNodes]);
+
+  const resizeFrame = useCallback((nodeId: string, p: { x: number; y: number; width: number; height: number }) => {
+    setNodes((ns) => ns.map((n) => (n.id === nodeId ? { ...n, position: { x: p.x, y: p.y }, style: { ...n.style, width: p.width, height: p.height } } : n)));
+    void api.patch(`/board-nodes/${nodeId}`, { x: p.x, y: p.y, width: p.width, height: p.height });
+  }, [setNodes]);
+
   const toRfNode = useCallback((bn: BoardNode): Node => {
+    if (bn.kind === "frame") {
+      const st = bn.style ?? {};
+      const color = (st.color as string) ?? FRAME_COLOR;
+      return {
+        id: bn.id, type: "frame", position: { x: bn.x, y: bn.y },
+        style: { width: bn.width ?? 360, height: bn.height ?? 240 }, zIndex: 0,
+        data: { label: (st.label as string) ?? "Moldura", color, onRename: renameFrame, onResize: resizeFrame } satisfies FrameData,
+      };
+    }
     const entry = bn.entryId ? entryMap.current[bn.entryId] : undefined;
     return {
-      id: bn.id, type: "entryCard", position: { x: bn.x, y: bn.y },
+      id: bn.id, type: "entryCard", position: { x: bn.x, y: bn.y }, zIndex: 1,
       data: {
         title: entry?.title ?? "(sem ficha)", etype: entry?.type ?? bn.kind, entryId: bn.entryId,
         importance: entry?.importance ?? 0, status: entry?.status ?? "draft",
@@ -271,7 +324,7 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
         onRename: renameEntry, onOpen: setOpenId,
       } satisfies CardData,
     };
-  }, [renameEntry]);
+  }, [renameEntry, renameFrame, resizeFrame]);
 
   const toRfEdge = (be: BoardEdge): Edge => ({
     id: be.id, source: be.sourceNodeId, target: be.targetNodeId, label: relLabel(be.label) || undefined,
@@ -356,23 +409,46 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
     return out;
   };
 
+  // cards cujo centro está dentro da moldura (para arrastá-los junto)
+  const cardNodesInFrame = (frame: Node): string[] => {
+    const fx = frame.position.x, fy = frame.position.y;
+    const fw = Number((frame.style as { width?: number })?.width) || frame.measured?.width || 360;
+    const fh = Number((frame.style as { height?: number })?.height) || frame.measured?.height || 240;
+    return nodesRef.current
+      .filter((n) => n.type === "entryCard")
+      .filter((n) => {
+        const cx = n.position.x + (n.measured?.width ?? 190) / 2;
+        const cy = n.position.y + (n.measured?.height ?? 64) / 2;
+        return cx >= fx && cx <= fx + fw && cy >= fy && cy <= fy + fh;
+      })
+      .map((n) => n.id);
+  };
+
   const onNodeDragStart = useCallback((_e: unknown, node: Node) => {
-    dragRef.current = { last: { ...node.position }, moved: new Set() };
+    const moved = node.type === "frame" ? cardNodesInFrame(node) : [];
+    dragRef.current = { last: { ...node.position }, moved: new Set(moved) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onNodeDrag = useCallback((_e: unknown, node: Node) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const entryId = (node.data as CardData).entryId;
-    if (!entryId) return;
-    const memberNodeIds = descendantNodeIds(entryId);
-    if (memberNodeIds.length === 0) return;
+    let targets: string[];
+    if (node.type === "frame") {
+      targets = [...drag.moved]; // pré-computados no início do arraste
+    } else {
+      const entryId = (node.data as CardData).entryId;
+      if (!entryId) return;
+      targets = descendantNodeIds(entryId);
+      if (targets.length === 0) return;
+      targets.forEach((id) => drag.moved.add(id));
+    }
+    if (targets.length === 0) return;
     const dx = node.position.x - drag.last.x;
     const dy = node.position.y - drag.last.y;
     drag.last = { ...node.position };
     if (dx === 0 && dy === 0) return;
-    const idSet = new Set(memberNodeIds);
-    memberNodeIds.forEach((id) => drag.moved.add(id));
+    const idSet = new Set(targets);
     setNodes((ns) => ns.map((n) => (idSet.has(n.id) ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } } : n)));
   }, [setNodes]);
 
@@ -435,6 +511,12 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
     await load();
   }
 
+  async function createFrame() {
+    if (!boardId) return;
+    await api.post(`/boards/${boardId}/nodes`, { kind: "frame", x: 60, y: 90, width: 380, height: 260, style: { label: "Nova moldura", color: FRAME_COLOR } });
+    await load();
+  }
+
   const handleNodesChange = useCallback((changes: NodeChange[]) => onNodesChange(changes), [onNodesChange]);
 
   // arrastar ficha da árvore (sidebar) e soltar no quadro → plota o card (+ membros se contêiner) na posição do drop
@@ -480,6 +562,7 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
       {lens === "quadro" && (
         <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
           <button className="primary" onClick={() => setNewOpen(true)}>+ Novo card</button>
+          <button onClick={createFrame} title="cria uma moldura para agrupar cards">▦ Moldura</button>
           <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>
         </div>
       )}
@@ -559,13 +642,14 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
             onNodesDelete={onNodesDelete} onEdgesDelete={onEdgesDelete} onConnect={onConnect}
             onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
             onInit={setRfi}
+            elevateNodesOnSelect={false}
             fitView
           >
             <Background color={canvasDot(theme)} gap={22} />
             <Controls />
             <MiniMap
               pannable zoomable
-              nodeColor={(n) => typeMeta((n.data as CardData).etype).color}
+              nodeColor={(n) => (n.type === "frame" ? FRAME_COLOR : typeMeta((n.data as CardData).etype).color)}
               nodeStrokeWidth={2}
               style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
             />
