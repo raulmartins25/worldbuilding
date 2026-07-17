@@ -2,9 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { entries, relationships, memberships, attributes, aiChecks } from "../db/schema";
+import { entries, relationships, memberships, attributes, aiChecks, maps } from "../db/schema";
 import { httpError, requireEntry, requireProject } from "../lib/guard";
-import { aiEnabled, embed, chat, chatStream } from "../lib/openai";
+import { aiEnabled, embed, chat, chatStream, generateImage } from "../lib/openai";
 import { embedEntry, buildEntryText } from "../lib/embedding";
 
 // monta um retrato textual compacto do mundo para a IA
@@ -212,6 +212,46 @@ export async function aiRoutes(app: FastifyInstance) {
       send({ error: e instanceof Error ? e.message : "erro" });
     }
     reply.raw.end();
+  });
+
+  // gerador de mapa por entrevista: a IA entrevista sobre geografia/estilo e devolve o prompt de imagem
+  app.post("/projects/:pid/maps/interview", async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { messages } = z.object({
+      messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).default([]),
+    }).parse(req.body);
+    const { text } = await buildProjectContext(pid);
+    const sys = {
+      role: "system" as const,
+      content:
+        "Você é um cartógrafo assistente. Conduza uma ENTREVISTA curta (no máximo 4 perguntas, UMA de cada vez) " +
+        "para desenhar o mapa deste mundo de fantasia. Cubra: terreno/bioma dominante; regiões principais e como se " +
+        "posicionam entre si; elementos marcantes (mares, montanhas, florestas, desertos, cidades); e o ESTILO visual " +
+        "(ex.: mapa antigo em pergaminho, atlas pintado à mão, estilo Tolkien). Use o CONTEXTO do mundo para não " +
+        "perguntar o óbvio (aproveite regiões/locais já existentes). Responda SEMPRE em JSON: " +
+        '{"ask":"próxima pergunta"} enquanto precisar de mais informação, OU {"prompt":"..."} quando já tiver o ' +
+        "suficiente. Nesse caso 'prompt' é uma descrição RICA em INGLÊS para um gerador de imagens desenhar o mapa " +
+        "(inclua estilo cartográfico, regiões nomeadas, geografia, paleta; peça 'a fantasy world map, top-down', sem " +
+        "texto ilegível). Nunca retorne 'ask' e 'prompt' juntos.\n\nCONTEXTO DO MUNDO:\n" + text,
+    };
+    const raw = await chat([sys, ...messages], { json: true, temperature: 0.6 });
+    let out: { ask?: string; prompt?: string } = {};
+    try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    return { ask: out.ask ?? null, prompt: out.prompt ?? null };
+  });
+
+  // gera a imagem do mapa a partir do prompt e salva como um mapa do projeto (imageUrl = data URL)
+  app.post("/projects/:pid/maps/generate", async (req, reply) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { prompt, name } = z.object({
+      prompt: z.string().min(10),
+      name: z.string().min(1).default("Mapa gerado"),
+    }).parse(req.body);
+    const imageUrl = await generateImage(prompt);
+    const [map] = await db.insert(maps).values({ projectId: pid, name, imageUrl, width: 1024, height: 1024 }).returning();
+    return reply.code(201).send({ map });
   });
 
   // sugerir ligações: a IA propõe novas relações; grava como ai_checks(kind=suggestion)

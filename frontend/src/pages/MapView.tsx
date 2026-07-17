@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
 import { EntryDrawer } from "./EntryDrawer";
+import { MapGenPanel } from "./MapGenPanel";
 import type { Entry } from "../lib/types";
 
 interface WMap { id: string; name: string; imageUrl: string; }
@@ -18,7 +19,13 @@ export function MapView({ projectId }: { projectId: string }) {
   const [name, setName] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [genOpen, setGenOpen] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  const onGenDone = async (id: string | null) => {
+    setGenOpen(false);
+    if (id) { await loadMaps(); setSelId(id); }
+  };
 
   const entryById = Object.fromEntries(entries.map((e) => [e.id, e]));
 
@@ -69,12 +76,14 @@ export function MapView({ projectId }: { projectId: string }) {
     return (
       <div style={{ maxWidth: 520, margin: "3rem auto", padding: "0 1rem" }}>
         <h2>Mapa cartográfico</h2>
-        <p className="muted">Crie um mapa colando a URL de uma imagem (mapa do seu mundo).</p>
+        <p className="muted">Gere um mapa com IA respondendo a uma breve entrevista, ou cole a URL de uma imagem.</p>
+        <button className="primary" onClick={() => setGenOpen(true)} style={{ width: "100%", marginBottom: 14 }}>✨ Gerar mapa com IA (entrevista)</button>
         <form className="stack" onSubmit={createMap}>
           <input placeholder="Nome do mapa" value={name} onChange={(e) => setName(e.target.value)} />
           <input placeholder="URL da imagem (https://…)" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
-          <button className="primary">Criar mapa</button>
+          <button>Criar por URL</button>
         </form>
+        {genOpen && <MapGenPanel projectId={projectId} onDone={onGenDone} />}
       </div>
     );
   }
@@ -95,8 +104,9 @@ export function MapView({ projectId }: { projectId: string }) {
           </select>
         )}
         <span className="grow" />
+        <button onClick={() => setGenOpen(true)} title="Gerar um novo mapa por entrevista com IA">✨ Gerar com IA</button>
         <details>
-          <summary className="muted" style={{ cursor: "pointer" }}>novo mapa</summary>
+          <summary className="muted" style={{ cursor: "pointer" }}>novo por URL</summary>
           <form className="row" style={{ marginTop: 6 }} onSubmit={createMap}>
             <input placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 110 }} />
             <input placeholder="URL da imagem" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} style={{ width: 160 }} />
@@ -133,6 +143,7 @@ export function MapView({ projectId }: { projectId: string }) {
       </div>
 
       {openId && <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => setOpenId(null)} />}
+      {genOpen && <MapGenPanel projectId={projectId} onDone={onGenDone} />}
     </div>
   );
 }

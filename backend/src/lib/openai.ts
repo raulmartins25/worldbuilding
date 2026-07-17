@@ -1,6 +1,7 @@
 // Cliente OpenAI mínimo via fetch (sem SDK). Chave lida de OPENAI_API_KEY.
 const EMBED_MODEL = process.env.OPENAI_EMBED_MODEL ?? "text-embedding-3-small";
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL ?? "dall-e-3";
 const BASE = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
 
 export const aiEnabled = () => !!process.env.OPENAI_API_KEY;
@@ -79,4 +80,18 @@ export async function chatStream(
     }
   }
   return full;
+}
+
+// gera uma imagem (mapa) a partir de um prompt; devolve um data URL (base64) para persistir direto.
+export async function generateImage(prompt: string): Promise<string> {
+  const res = await fetch(`${BASE}/images/generations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key()}` },
+    body: JSON.stringify({ model: IMAGE_MODEL, prompt: prompt.slice(0, 3800), size: "1024x1024", n: 1, response_format: "b64_json" }),
+  });
+  if (!res.ok) throw new Error(`openai_image_${res.status}: ${await res.text()}`);
+  const json = (await res.json()) as { data: { b64_json?: string }[] };
+  const b64 = json.data[0]?.b64_json;
+  if (!b64) throw new Error("openai_image_no_data");
+  return `data:image/png;base64,${b64}`;
 }
