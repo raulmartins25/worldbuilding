@@ -227,3 +227,34 @@ input:focus, textarea:focus, select:focus {
 .mention-item { padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; }
 .mention-item.sel, .mention-item:hover { background: var(--panel-2); }
 .mention-empty { padding: 8px; color: var(--muted); font-size: 13px; }
+
+/* ── mobile / responsivo ─────────────────────────────────────────────────── */
+body { overflow-x: hidden; }
+.no-scrollbar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 768px) {
+  /* 16px nos campos evita o zoom automático do iOS ao focar */
+  input, textarea, select { font-size: 16px; padding: 0.6rem 0.75rem; }
+  button { padding: 0.55rem 0.85rem; }
+  .hide-mobile { display: none !important; }
+
+  /* modais viram folha de tela cheia */
+  .modal-backdrop { padding: 0 !important; align-items: stretch !important; }
+  .modal-sheet {
+    width: 100vw !important; max-width: 100vw !important;
+    height: 100dvh !important; max-height: 100dvh !important;
+    border-radius: 0 !important; border: none !important;
+  }
+
+  /* drawer de ficha ocupa a tela toda */
+  .drawer-panel { width: 100vw !important; }
+
+  /* santuário: painel "Nesta cena" vira folha inferior, não cobre o manuscrito */
+  .focus-scene {
+    top: auto !important; bottom: 0; left: 0; right: 0; width: auto !important;
+    max-height: 42vh; border-radius: 12px 12px 0 0; border-bottom: none;
+  }
+  .focus-page { padding: 0 16px; margin-bottom: 46vh; }
+  .focus-editor .ProseMirror { font-size: 1.1rem; }
+}

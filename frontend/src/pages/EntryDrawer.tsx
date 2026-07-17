@@ -104,7 +104,7 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
 
   return (
     <>
-    <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 440, zIndex: 20, background: "var(--panel)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", boxShadow: "-8px 0 24px rgba(20,24,40,.12)" }}>
+    <div className="drawer-panel" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "min(440px, 100%)", zIndex: 20, background: "var(--panel)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", boxShadow: "-8px 0 24px rgba(20,24,40,.12)" }}>
       <div className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
         {entry && <EntryIcon type={entry.type} size={22} color={typeMeta(entry.type).color} />}
         <span className="muted grow" style={{ fontSize: 12 }}>{entry ? typeMeta(entry.type).label : ""} · {title}</span>

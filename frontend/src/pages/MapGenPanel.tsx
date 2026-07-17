@@ -48,8 +48,8 @@ export function MapGenPanel({ projectId, onDone }: { projectId: string; onDone: 
   }
 
   return (
-    <div onClick={() => onDone(preview ? preview.id : null)} style={{ position: "fixed", inset: 0, zIndex: 55, background: "rgba(15,18,30,.4)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "7vh" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: "94vw", maxHeight: "85vh", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", display: "flex", flexDirection: "column" }}>
+    <div onClick={() => onDone(preview ? preview.id : null)} className="modal-backdrop" style={{ position: "fixed", inset: 0, zIndex: 55, background: "rgba(15,18,30,.4)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "7vh" }}>
+      <div onClick={(e) => e.stopPropagation()} className="modal-sheet" style={{ width: 620, maxWidth: "94vw", maxHeight: "85vh", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", display: "flex", flexDirection: "column" }}>
         <div className="row" style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
           <strong className="grow" style={{ fontWeight: 500 }}>Gerar mapa por entrevista</strong>
           <button onClick={() => onDone(preview ? preview.id : null)}>fechar</button>

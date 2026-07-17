@@ -8,7 +8,8 @@ import { api } from "../lib/api";
 import { type Entry } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
-import { IconSparkles, IconArrowUpRight } from "@tabler/icons-react";
+import { IconSparkles, IconArrowUpRight, IconX } from "@tabler/icons-react";
+import { useIsMobile } from "../lib/useIsMobile";
 import { NewCardModal, type NewCardData } from "./NewCardModal";
 import { useSearchParams } from "react-router-dom";
 import { useTheme, canvasDot } from "../lib/theme";
@@ -227,6 +228,8 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
   const [newOpen, setNewOpen] = useState(false);
   const [checks, setChecks] = useState<Check[]>([]);
   const [checking, setChecking] = useState(false);
+  const [guardOpen, setGuardOpen] = useState(false);
+  const mobile = useIsMobile();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [gNodes, setGNodes, onGNodesChange] = useNodesState<Node>([]);
@@ -555,19 +558,30 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
       )}
 
       {lens === "quadro" && (
-        <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
-          <button className="primary" onClick={() => setNewOpen(true)}>+ Novo card</button>
-          <button onClick={createFrame} title="cria uma moldura para agrupar cards">▦ Moldura</button>
-          <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>
+        <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: mobile ? 5 : 8, borderRadius: 10, border: "1px solid var(--border)", gap: mobile ? 5 : undefined }}>
+          <button className="primary" onClick={() => setNewOpen(true)}>{mobile ? "+ Card" : "+ Novo card"}</button>
+          <button onClick={createFrame} title="cria uma moldura para agrupar cards">{mobile ? "▦" : "▦ Moldura"}</button>
+          {!mobile && <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>}
         </div>
       )}
 
+      {/* IA guardiã — colapsada num botão no mobile */}
+      {(lens === "quadro" || lens === "grafo") && !pending && mobile && !guardOpen && (
+        <button onClick={() => setGuardOpen(true)} title="IA guardiã"
+          style={{ position: "absolute", top: 12, right: 12, zIndex: 5, borderRadius: 999, padding: "8px 11px", display: "inline-flex", alignItems: "center", gap: 5, boxShadow: "0 2px 10px rgba(20,24,40,.12)" }}>
+          <IconSparkles size={16} color="var(--accent)" />
+          {checks.some((c) => c.kind === "inconsistency" || c.kind === "gap") && (
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--warn-strong)" }} />
+          )}
+        </button>
+      )}
       {/* IA guardiã — a IA sussurra sobre o mundo aqui mesmo, no canvas */}
-      {(lens === "quadro" || lens === "grafo") && !pending && (
-        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 5, width: 216, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 10, boxShadow: "0 2px 10px rgba(20,24,40,.10)" }}>
+      {(lens === "quadro" || lens === "grafo") && !pending && (!mobile || guardOpen) && (
+        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 6, width: mobile ? "min(280px, 86vw)" : 216, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 10, boxShadow: "0 2px 10px rgba(20,24,40,.10)" }}>
           <div className="row" style={{ gap: 6, marginBottom: 8 }}>
             <IconSparkles size={15} color="var(--accent)" />
-            <strong style={{ fontSize: 13, fontWeight: 500 }}>IA guardiã</strong>
+            <strong className="grow" style={{ fontSize: 13, fontWeight: 500 }}>IA guardiã</strong>
+            {mobile && <button onClick={() => setGuardOpen(false)} style={{ padding: "2px 4px", border: "none", background: "transparent" }}><IconX size={16} /></button>}
           </div>
           {(() => {
             const bad = checks.filter((c) => c.kind === "inconsistency" || c.kind === "gap");

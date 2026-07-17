@@ -68,8 +68,8 @@ export function CommandPalette({ open, onClose, projectId, onLens }: { open: boo
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(15,18,30,.35)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "12vh" }}>
-      <div onClick={(e) => e.stopPropagation()} onKeyDown={onKey} style={{ width: 560, maxWidth: "92vw", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", overflow: "hidden" }}>
+    <div onClick={onClose} className="modal-backdrop" style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(15,18,30,.35)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "12vh" }}>
+      <div onClick={(e) => e.stopPropagation()} onKeyDown={onKey} className="modal-sheet" style={{ width: 560, maxWidth: "92vw", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", overflow: "hidden" }}>
         <div className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", gap: 8 }}>
           <IconSearch size={18} color="var(--muted)" />
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Buscar fichas, lentes, ações…" style={{ border: "none", padding: 0 }} />

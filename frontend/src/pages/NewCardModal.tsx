@@ -76,8 +76,8 @@ export function NewCardModal({
   const label = m.label.toLowerCase();
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 58, background: "rgba(15,18,30,.45)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "5vh" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 720, maxWidth: "95vw", maxHeight: "88vh", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", display: "flex", flexDirection: "column" }}>
+    <div onClick={onClose} className="modal-backdrop" style={{ position: "fixed", inset: 0, zIndex: 58, background: "rgba(15,18,30,.45)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "5vh" }}>
+      <div onClick={(e) => e.stopPropagation()} className="modal-sheet" style={{ width: 720, maxWidth: "95vw", maxHeight: "88vh", background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 12px 40px rgba(20,24,40,.25)", display: "flex", flexDirection: "column" }}>
         <div className="row" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
           <IconPlus size={18} color="var(--accent)" />
           <strong style={{ fontWeight: 500 }}>Novo card</strong>
