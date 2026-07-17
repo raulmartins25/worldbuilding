@@ -83,15 +83,23 @@ export async function chatStream(
 }
 
 // gera uma imagem (mapa) a partir de um prompt; devolve um data URL (base64) para persistir direto.
+// agnóstico ao modelo: gpt-image-1 devolve b64_json; dall-e-3 (sem response_format) devolve url → baixamos.
 export async function generateImage(prompt: string): Promise<string> {
   const res = await fetch(`${BASE}/images/generations`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key()}` },
-    body: JSON.stringify({ model: IMAGE_MODEL, prompt: prompt.slice(0, 3800), size: "1024x1024", n: 1, response_format: "b64_json" }),
+    body: JSON.stringify({ model: IMAGE_MODEL, prompt: prompt.slice(0, 3800), size: "1024x1024", n: 1 }),
   });
   if (!res.ok) throw new Error(`openai_image_${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as { data: { b64_json?: string }[] };
-  const b64 = json.data[0]?.b64_json;
-  if (!b64) throw new Error("openai_image_no_data");
-  return `data:image/png;base64,${b64}`;
+  const json = (await res.json()) as { data: { b64_json?: string; url?: string }[] };
+  const item = json.data?.[0];
+  if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+  if (item?.url) {
+    const img = await fetch(item.url);
+    if (!img.ok) throw new Error(`openai_image_fetch_${img.status}`);
+    const buf = Buffer.from(await img.arrayBuffer());
+    const ct = img.headers.get("content-type") ?? "image/png";
+    return `data:${ct};base64,${buf.toString("base64")}`;
+  }
+  throw new Error("openai_image_no_data");
 }
