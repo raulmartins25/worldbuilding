@@ -214,6 +214,42 @@ export async function aiRoutes(app: FastifyInstance) {
     reply.raw.end();
   });
 
+  // "deixar a IA rascunhar": preenche o template do tipo respeitando magia/clima/tom do mundo
+  app.post("/projects/:pid/entries/draft", async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { type, title, importance, fields } = z.object({
+      type: z.string().min(1),
+      title: z.string().optional(),
+      importance: z.number().int().min(0).max(5).optional(),
+      fields: z.array(z.object({ key: z.string(), label: z.string(), options: z.array(z.string()).optional() })).default([]),
+    }).parse(req.body);
+    const { text: world } = await buildProjectContext(pid);
+    const keys = fields
+      .map((f) => `- ${f.key} (${f.label})${f.options?.length ? ` — escolha UM: ${f.options.join(", ")}` : ""}`)
+      .join("\n") || "(sem campos próprios)";
+    const raw = await chat([
+      {
+        role: "system",
+        content:
+          "Você rascunha fichas para a bíblia de um mundo de fantasia. Preencha o template respeitando a MAGIA, o CLIMA e " +
+          "o TOM do mundo do CONTEXTO — coerente com o que já existe, sem contradizer nada. Seja concreto e específico " +
+          "(nomes, detalhes próprios deste mundo), nunca genérico. Escreva em português.\n" +
+          'Responda SOMENTE JSON: {"title": string, "summary": string, "metadata": {<as chaves do template>}}. ' +
+          "'summary' = UMA frase que resume a ficha. Preencha TODAS as chaves listadas.\n\nCHAVES DO TEMPLATE:\n" + keys,
+      },
+      {
+        role: "user",
+        content: "CONTEXTO DO MUNDO:\n" + world + `\n\nRascunhe uma ficha do tipo "${type}"` +
+          (title?.trim() ? ` chamada "${title.trim()}".` : " (invente o nome).") +
+          (importance != null ? ` Peso na história: ${importance} de 4.` : ""),
+      },
+    ], { json: true, temperature: 0.8 });
+    let out: { title?: string; summary?: string; metadata?: Record<string, unknown> } = {};
+    try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    return { title: out.title ?? title ?? "", summary: out.summary ?? "", metadata: out.metadata ?? {} };
+  });
+
   // assistente da cena (modo foco): sussurro criativo + checagem de continuidade contra a bíblia, numa chamada
   app.post("/projects/:pid/scenes/assist", async (req) => {
     const { pid } = req.params as { pid: string };

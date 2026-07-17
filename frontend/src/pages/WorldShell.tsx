@@ -132,7 +132,7 @@ export function WorldShell() {
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
             <ErrorBoundary key={onIndex ? `index:${lens}` : location.pathname}>
               <Routes>
-                <Route index element={<CanvasView projectId={pid!} lens={lens} onLens={setLens} />} />
+                <Route index element={<CanvasView projectId={pid!} projectName={project?.name ?? "Mundo"} lens={lens} onLens={setLens} />} />
                 <Route path="entries" element={<EntriesView projectId={pid!} />} />
                 <Route path="ia" element={<AIView projectId={pid!} />} />
               </Routes>

@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType,
   useNodesState, useEdgesState,
   type Node, type Edge, type NodeProps, type NodeChange, type Connection, type ReactFlowInstance,
 } from "@xyflow/react";
 import { api } from "../lib/api";
-import { ENTRY_TYPES, type Entry, type EntryType } from "../lib/types";
+import { type Entry } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { NewCardModal, type NewCardData } from "./NewCardModal";
 import { useSearchParams } from "react-router-dom";
 import { useTheme, canvasDot } from "../lib/theme";
 import { EntryDrawer } from "./EntryDrawer";
@@ -157,14 +158,13 @@ function EntryCardNode({ id, data }: NodeProps) {
   );
 }
 
-export function CanvasView({ projectId, lens, onLens }: { projectId: string; lens: Lens; onLens: (l: Lens) => void }) {
+export function CanvasView({ projectId, projectName, lens, onLens }: { projectId: string; projectName: string; lens: Lens; onLens: (l: Lens) => void }) {
   const [boardId, setBoardId] = useState<string | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [gNodes, setGNodes, onGNodesChange] = useNodesState<Node>([]);
   const [gEdges, setGEdges, onGEdgesChange] = useEdgesState<Edge>([]);
-  const [newType, setNewType] = useState<EntryType>("character");
-  const [newTitle, setNewTitle] = useState("");
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -379,13 +379,12 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
     await load();
   };
 
-  async function createCard(e: FormEvent) {
-    e.preventDefault();
-    if (!boardId || !newTitle.trim()) return;
-    await api.post(`/boards/${boardId}/cards`, { type: newType, title: newTitle.trim(), x: 40 + Math.random() * 240, y: 40 + Math.random() * 200 });
-    setNewTitle("");
+  const submitNewCard = async (d: NewCardData) => {
+    if (!boardId) return;
+    await api.post(`/boards/${boardId}/cards`, { ...d, x: 40 + Math.random() * 240, y: 40 + Math.random() * 200 });
+    setNewOpen(false);
     await load();
-  }
+  };
 
   async function expandSelected() {
     if (!boardId || !selected) return;
@@ -437,13 +436,7 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
 
       {lens === "quadro" && (
         <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
-          <form className="row" onSubmit={createCard}>
-            <select value={newType} onChange={(e) => setNewType(e.target.value as EntryType)} style={{ width: 190 }}>
-              {ENTRY_TYPES.map((t) => <option key={t} value={t}>{typeMeta(t).icon} {typeMeta(t).label}</option>)}
-            </select>
-            <input placeholder="novo card…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} style={{ width: 180 }} />
-            <button className="primary">+ Card</button>
-          </form>
+          <button className="primary" onClick={() => setNewOpen(true)}>+ Novo card</button>
           <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>
         </div>
       )}
@@ -521,6 +514,9 @@ export function CanvasView({ projectId, lens, onLens }: { projectId: string; len
 
       {openId && (
         <EntryDrawer key={openId} entryId={openId} projectId={projectId} onClose={() => { setOpenId(null); void load(); }} />
+      )}
+      {newOpen && (
+        <NewCardModal projectId={projectId} projectName={projectName} onClose={() => setNewOpen(false)} onSubmit={submitNewCard} />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { boards, boardNodes, boardEdges, entries, relationships, memberships } from "../db/schema";
 import { httpError, requireBoard, requireProject } from "../lib/guard";
+import { embedEntry } from "../lib/embedding";
 
 const ENTRY_TYPES = [
   "character", "location", "region", "faction", "item", "magic_system",
@@ -94,17 +95,22 @@ export async function boardRoutes(app: FastifyInstance) {
     const body = z.object({
       type: z.enum(ENTRY_TYPES),
       title: z.string().min(1),
+      summary: z.string().optional(),
+      importance: z.number().int().min(0).max(5).optional(),
+      metadata: z.record(z.any()).optional(),
       x: z.number(), y: z.number(),
     }).parse(req.body);
     const result = await db.transaction(async (tx) => {
       const [entry] = await tx.insert(entries).values({
         userId: req.user.sub, projectId: board.projectId, type: body.type, title: body.title,
+        summary: body.summary, importance: body.importance ?? 0, metadata: body.metadata ?? {},
       }).returning();
       const [node] = await tx.insert(boardNodes).values({
         projectId: board.projectId, boardId: id, entryId: entry.id, kind: "card", x: body.x, y: body.y,
       }).returning();
       return { entry, node };
     });
+    void embedEntry(result.entry.id).catch(() => {});
     return reply.code(201).send(result);
   });
 
