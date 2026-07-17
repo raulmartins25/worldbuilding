@@ -7,7 +7,7 @@ import { DND_ENTRY } from "./CanvasView";
 interface Membership { containerId: string; memberId: string; }
 interface EMeta { title: string; type: string; }
 
-export function ContainerTree({ projectId, onOpen, onPlot, onNew }: { projectId: string; onOpen: (id: string) => void; onPlot: (id: string) => void; onNew?: () => void }) {
+export function ContainerTree({ projectId, onOpen, onFrame, onNew }: { projectId: string; onOpen: (id: string) => void; onFrame: (id: string) => void; onNew?: () => void }) {
   const [emap, setEmap] = useState<Record<string, EMeta>>({});
   const [childrenOf, setChildrenOf] = useState<Record<string, string[]>>({});
   const [roots, setRoots] = useState<string[]>([]);
@@ -53,7 +53,7 @@ export function ContainerTree({ projectId, onOpen, onPlot, onNew }: { projectId:
             {emap[id]?.title ?? "…"}
           </span>
           {isContainer && (
-            <button onClick={() => onPlot(id)} title="plotar no quadro" style={{ padding: "0 4px", border: "none", background: "transparent", color: "var(--muted)", fontSize: 12 }}>▦</button>
+            <button onClick={() => onFrame(id)} title="criar moldura com os membros dentro" style={{ padding: "0 4px", border: "none", background: "transparent", color: "var(--muted)", fontSize: 12 }}>▦</button>
           )}
           <span title="arraste para o quadro" style={{ color: "var(--border-strong)", fontSize: 11, cursor: "grab", lineHeight: 1 }}>⠿</span>
         </div>

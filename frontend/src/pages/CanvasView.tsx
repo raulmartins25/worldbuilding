@@ -258,21 +258,16 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
     }
   }, [searchParams, setSearchParams]);
 
-  // plota um contêiner + membros no quadro (?plot=<entryId> vindo da sidebar)
+  // framear um contêiner: cria a moldura com o nome do contêiner + membros dentro (?frame=<entryId> vindo da sidebar)
   const boardIdRef = useRef<string | null>(null);
   useEffect(() => { boardIdRef.current = boardId; }, [boardId]);
   useEffect(() => {
-    const plotId = searchParams.get("plot");
+    const frameId = searchParams.get("frame");
     const bid = boardIdRef.current;
-    if (!plotId || !bid) return;
+    if (!frameId || !bid) return;
     void (async () => {
-      let nodeId = nodesRef.current.find((n) => (n.data as CardData).entryId === plotId)?.id;
-      if (!nodeId) {
-        const r = await api.post<{ node: { id: string } }>(`/boards/${bid}/nodes`, { entryId: plotId, x: 60, y: 60 });
-        nodeId = r.node.id;
-      }
-      await api.post(`/boards/${bid}/expand-container`, { containerNodeId: nodeId }).catch(() => {});
-      searchParams.delete("plot");
+      await api.post(`/boards/${bid}/frame-container`, { containerEntryId: frameId }).catch(() => {});
+      searchParams.delete("frame");
       setSearchParams(searchParams, { replace: true });
       await load();
     })();

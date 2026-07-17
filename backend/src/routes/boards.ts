@@ -146,6 +146,57 @@ export async function boardRoutes(app: FastifyInstance) {
     return reply.code(201).send({ created });
   });
 
+  // framear um contêiner: cria uma moldura com o nome do contêiner e posiciona os membros dentro (grade)
+  app.post("/boards/:id/frame-container", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const board = await requireBoard(req.user.sub, id);
+    const { containerEntryId, x, y } = z.object({
+      containerEntryId: z.string().uuid(), x: z.number().optional(), y: z.number().optional(),
+    }).parse(req.body);
+
+    const [container] = await db.select().from(entries).where(eq(entries.id, containerEntryId));
+    if (!container) throw httpError(404, "entry_not_found");
+    const mems = await db.select().from(memberships).where(eq(memberships.containerId, containerEntryId));
+    const memberIds = mems.map((m) => m.memberId);
+
+    const PAD = 22, HEAD = 48, CW = 200, CH = 96, GX = 22, GY = 20;
+    const cols = Math.max(1, Math.min(3, memberIds.length || 1));
+    const rows = Math.max(1, Math.ceil((memberIds.length || 1) / cols));
+    const fx = x ?? 60, fy = y ?? 60;
+    const width = PAD * 2 + cols * CW + (cols - 1) * GX;
+    const height = HEAD + PAD + rows * CH + (rows - 1) * GY;
+
+    const [frame] = await db.insert(boardNodes).values({
+      projectId: board.projectId, boardId: id, kind: "frame", x: fx, y: fy,
+      width, height, style: { label: container.title, color: "#8891a7" },
+    }).returning();
+
+    const existing = memberIds.length
+      ? await db.select().from(boardNodes).where(and(eq(boardNodes.boardId, id), inArray(boardNodes.entryId, memberIds)))
+      : [];
+    const byEntry = new Map(existing.map((n) => [n.entryId, n]));
+
+    const nodes = [];
+    let i = 0;
+    for (const eid of memberIds) {
+      const col = i % cols, row = Math.floor(i / cols);
+      const px = fx + PAD + col * (CW + GX);
+      const py = fy + HEAD + row * (CH + GY);
+      const ex = byEntry.get(eid);
+      if (ex) {
+        const [n] = await db.update(boardNodes).set({ x: px, y: py }).where(eq(boardNodes.id, ex.id)).returning();
+        nodes.push(n);
+      } else {
+        const [n] = await db.insert(boardNodes).values({
+          projectId: board.projectId, boardId: id, entryId: eid, kind: "card", x: px, y: py,
+        }).returning();
+        nodes.push(n);
+      }
+      i++;
+    }
+    return reply.code(201).send({ frame, nodes });
+  });
+
   // batch de posições/tamanho (salvar drag)
   app.patch("/boards/:id/nodes", async (req) => {
     const { id } = req.params as { id: string };

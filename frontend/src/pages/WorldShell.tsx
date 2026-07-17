@@ -142,7 +142,7 @@ export function WorldShell() {
               <ContainerTree
                 projectId={pid!}
                 onOpen={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?open=${id}`); }}
-                onPlot={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?plot=${id}`); }}
+                onFrame={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?frame=${id}`); }}
                 onNew={() => { setLens("quadro"); navigate(`/worlds/${pid}?new=1`); }}
               />
             </aside>
