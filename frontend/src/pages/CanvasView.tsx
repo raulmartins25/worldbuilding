@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { type Entry } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { IconSparkles, IconArrowUpRight } from "@tabler/icons-react";
 import { NewCardModal, type NewCardData } from "./NewCardModal";
 import { useSearchParams } from "react-router-dom";
 import { useTheme, canvasDot } from "../lib/theme";
@@ -21,6 +22,7 @@ interface BoardNode { id: string; entryId: string | null; kind: string; x: numbe
 interface BoardEdge { id: string; sourceNodeId: string; targetNodeId: string; label: string | null; }
 interface BoardBundle { board: { id: string }; nodes: BoardNode[]; edges: BoardEdge[]; }
 interface Membership { containerId: string; memberId: string; }
+interface Check { id: string; kind: string; title: string; detail: string | null; entryId: string | null; }
 interface GNode { id: string; title: string; type: string; }
 interface GEdge { id: string; sourceId: string; targetId: string; type: string; label: string | null; }
 
@@ -95,6 +97,24 @@ type CardData = {
   onOpen: (entryId: string) => void;
 };
 
+const PEOPLE = ["character", "creature", "deity"];
+const STATUS_LABEL: Record<string, string> = { draft: "rascunho", canon: "canônico", archived: "arquivado" };
+
+// "Protagonista · canônico" — papel pelo peso na história + estado da ficha
+function roleLine(d: { etype: string; importance: number; status: string }): string {
+  let role = typeMeta(d.etype).label.toLowerCase();
+  if (PEOPLE.includes(d.etype)) {
+    if (d.importance >= 4) role = "protagonista";
+    else if (d.importance >= 2) role = "coadjuvante";
+    else role = "figurante";
+  }
+  const st = STATUS_LABEL[d.status];
+  return st ? `${role} · ${st}` : role;
+}
+
+// iniciais para gente (RS, KE); os demais tipos usam o ícone
+const initials = (t: string) => t.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+
 function EntryCardNode({ id, data }: NodeProps) {
   const d = data as CardData;
   const meta = typeMeta(d.etype);
@@ -139,9 +159,17 @@ function EntryCardNode({ id, data }: NodeProps) {
         >⤢</button>
       )}
       <div className="row" style={{ gap: 10, alignItems: "center" }}>
-        <EntryIcon type={d.etype} size={proto ? 30 : 24} color={meta.color} />
+        <span
+          style={{
+            flexShrink: 0, width: proto ? 34 : 28, height: proto ? 34 : 28, borderRadius: 999,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            background: `color-mix(in srgb, ${meta.color} 22%, transparent)`, border: `1px solid ${meta.color}`,
+            color: meta.color, fontSize: proto ? 12 : 11, fontWeight: 600, letterSpacing: ".02em",
+          }}
+        >
+          {PEOPLE.includes(d.etype) ? initials(d.title) : <EntryIcon type={d.etype} size={proto ? 18 : 15} color={meta.color} />}
+        </span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 11, color: meta.color, fontWeight: 500 }}>{meta.label}</div>
           {editing ? (
             <input
               autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit}
@@ -151,6 +179,9 @@ function EntryCardNode({ id, data }: NodeProps) {
           ) : (
             <strong style={{ display: "block", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", fontWeight: proto ? 500 : 400, fontSize: proto ? 15 : 14, color: meta.ink }}>{d.title}</strong>
           )}
+          <div style={{ fontSize: 11, color: meta.color, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {roleLine(d)}
+          </div>
         </div>
       </div>
       <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 8, height: 8 }} />
@@ -161,6 +192,8 @@ function EntryCardNode({ id, data }: NodeProps) {
 export function CanvasView({ projectId, projectName, lens, onLens }: { projectId: string; projectName: string; lens: Lens; onLens: (l: Lens) => void }) {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [checks, setChecks] = useState<Check[]>([]);
+  const [checking, setChecking] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [gNodes, setGNodes, onGNodesChange] = useNodesState<Node>([]);
@@ -179,6 +212,15 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
     if (o) {
       setOpenId(o);
       searchParams.delete("open");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  // abre o modal de novo card quando a sidebar navega com ?new=1
+  useEffect(() => {
+    if (searchParams.get("new")) {
+      setNewOpen(true);
+      searchParams.delete("new");
       setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -281,11 +323,12 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
     const m: Record<string, string[]> = {};
     for (const ms of tree.memberships) (m[ms.containerId] ??= []).push(ms.memberId);
     membersRef.current = m;
-    // marcador da IA: fichas com apontamentos abertos (contradição/lacuna)
+    // marcador da IA: fichas com apontamentos abertos (contradição/lacuna) + painel "IA guardiã"
     try {
-      const ck = await api.get<{ checks: { entryId: string | null; kind: string }[] }>(`/projects/${projectId}/ai/checks?status=open`);
+      const ck = await api.get<{ checks: Check[] }>(`/projects/${projectId}/ai/checks?status=open`);
       aiFlagsRef.current = new Set(ck.checks.filter((c) => c.entryId && (c.kind === "inconsistency" || c.kind === "gap")).map((c) => c.entryId!));
-    } catch { aiFlagsRef.current = new Set(); }
+      setChecks(ck.checks);
+    } catch { aiFlagsRef.current = new Set(); setChecks([]); }
     setBoardId(bundle.board.id);
     setNodes(bundle.nodes.map(toRfNode));
     setEdges(bundle.edges.map(toRfEdge));
@@ -438,6 +481,51 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
         <div className="row" style={{ position: "absolute", top: 12, left: 12, zIndex: 5, background: "var(--panel)", padding: 8, borderRadius: 10, border: "1px solid var(--border)" }}>
           <button className="primary" onClick={() => setNewOpen(true)}>+ Novo card</button>
           <button onClick={expandSelected} disabled={!selected} title="plota os membros do card selecionado">Expandir membros</button>
+        </div>
+      )}
+
+      {/* IA guardiã — a IA sussurra sobre o mundo aqui mesmo, no canvas */}
+      {(lens === "quadro" || lens === "grafo") && !pending && (
+        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 5, width: 216, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 10, boxShadow: "0 2px 10px rgba(20,24,40,.10)" }}>
+          <div className="row" style={{ gap: 6, marginBottom: 8 }}>
+            <IconSparkles size={15} color="var(--accent)" />
+            <strong style={{ fontSize: 13, fontWeight: 500 }}>IA guardiã</strong>
+          </div>
+          {(() => {
+            const bad = checks.filter((c) => c.kind === "inconsistency" || c.kind === "gap");
+            const sug = checks.find((c) => c.kind === "suggestion");
+            if (bad.length === 0 && !sug) {
+              return <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Nada a apontar por enquanto.</div>;
+            }
+            return (
+              <>
+                {bad.length > 0 && (
+                  <div style={{ borderRadius: 8, padding: 8, marginBottom: 6, background: "color-mix(in srgb, var(--warn) 12%, var(--panel))", border: "1px solid color-mix(in srgb, var(--warn) 45%, var(--border))" }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--warn-strong)" }}>
+                      {bad.length} {bad.length === 1 ? "inconsistência" : "inconsistências"}
+                    </div>
+                    <div style={{ fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>{bad[0].detail ?? bad[0].title}</div>
+                  </div>
+                )}
+                {sug && (
+                  <div style={{ borderRadius: 8, padding: 8, marginBottom: 6, background: "color-mix(in srgb, var(--accent) 10%, var(--panel))", border: "1px solid color-mix(in srgb, var(--accent) 45%, var(--border))" }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>Sugestão</div>
+                    <div style={{ fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>{sug.detail ?? sug.title}</div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+          <button
+            onClick={async () => {
+              setChecking(true);
+              try { await api.post(`/projects/${projectId}/ai/check`); await load(); } catch { /* silencioso */ } finally { setChecking(false); }
+            }}
+            disabled={checking}
+            style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: 13 }}
+          >
+            {checking ? "Analisando…" : <>Checar mundo <IconArrowUpRight size={14} /></>}
+          </button>
         </div>
       )}
 

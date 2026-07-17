@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, Route, Routes } from "react-router-dom";
+import { IconWorld, IconSearch, IconPalette, IconLayoutSidebar } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import type { Project } from "../lib/types";
 import { ErrorBoundary } from "../lib/ErrorBoundary";
@@ -17,11 +18,10 @@ const LENSES: { key: Lens; label: string }[] = [
   { key: "mapa", label: "Mapa" },
   { key: "linha", label: "Linha do tempo" },
 ];
-const LENS_TITLE: Record<Lens, string> = { quadro: "Quadro", grafo: "Grafo", mapa: "Mapa", linha: "Linha do tempo" };
 // seções com página própria (rota)
-const SECTIONS: { to: string; label: string; title: string }[] = [
-  { to: "entries", label: "Fichas", title: "Fichas" },
-  { to: "ia", label: "IA", title: "Central de IA" },
+const SECTIONS: { to: string; label: string }[] = [
+  { to: "entries", label: "Fichas" },
+  { to: "ia", label: "IA" },
 ];
 
 export function WorldShell() {
@@ -32,6 +32,8 @@ export function WorldShell() {
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [theme, setTheme] = useState<ThemeName>("default");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [immersive, setImmersive] = useState(false);
   const [lens, setLens] = useState<Lens>("quadro");
 
   // Cmd/Ctrl+K abre a command palette (espinha por teclado)
@@ -45,10 +47,7 @@ export function WorldShell() {
 
   const seg = (location.pathname.split(`/worlds/${pid}`)[1] ?? "").replace(/^\//, "");
   const onIndex = seg === "";
-  const section = SECTIONS.find((s) => s.to === seg);
-  const crumb = onIndex ? LENS_TITLE[lens] : (section?.title ?? "Mundo");
 
-  // seleciona uma lente espacial: garante o canvas-home (rota índice) e troca a camada
   const selectLens = (l: Lens) => { setLens(l); if (!onIndex) navigate(`/worlds/${pid}`); };
 
   useEffect(() => {
@@ -72,73 +71,95 @@ export function WorldShell() {
   }, [theme]);
 
   async function changeTheme(t: ThemeName) {
-    setTheme(t);
+    setTheme(t); setThemeOpen(false);
     const s = { ...settings, theme: t };
     setSettings(s);
     if (pid) await api.patch(`/projects/${pid}`, { settings: s });
   }
 
-  const navItemStyle = (active: boolean) => ({
-    padding: "0.5rem 0.7rem", borderRadius: 8, border: "none", textAlign: "left" as const, cursor: "pointer",
-    background: active ? "var(--panel-2)" : "transparent",
-    color: active ? "var(--text)" : "var(--muted)",
+  const pill = (active: boolean) => ({
+    padding: "5px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+    border: `1px solid ${active ? "transparent" : "var(--border)"}`,
+    background: active ? "var(--accent)" : "transparent",
+    color: active ? "#fff" : "var(--muted)",
   });
 
   return (
     <ThemeCtx.Provider value={theme}>
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", height: "100%" }}>
-        <aside style={{ background: "var(--panel)", borderRight: "1px solid var(--border)", padding: "1rem", display: "flex", flexDirection: "column" }}>
-          <div className="row" style={{ marginBottom: "1rem" }}>
-            <button onClick={() => navigate("/worlds")}>←</button>
-            <strong className="grow" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {project?.name ?? "…"}
-            </strong>
-          </div>
-          <nav className="stack">
-            <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em", padding: "0 0.7rem 2px" }}>Lentes</div>
-            {LENSES.map((l) => (
-              <button key={l.key} onClick={() => selectLens(l.key)} style={navItemStyle(onIndex && lens === l.key)}>
-                {l.label}
-              </button>
-            ))}
-            <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em", padding: "10px 0.7rem 2px" }}>Seções</div>
-            {SECTIONS.map((s) => (
-              <NavLink key={s.to} to={s.to} style={({ isActive }) => navItemStyle(isActive)}>
-                {s.label}
-              </NavLink>
-            ))}
-          </nav>
-          <ContainerTree
-            projectId={pid!}
-            onOpen={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?open=${id}`); }}
-            onPlot={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?plot=${id}`); }}
-          />
-          <div className="stack" style={{ marginTop: "auto", gap: 4 }}>
-            <label className="muted" style={{ fontSize: 12 }}>Tema do mundo</label>
-            <select value={theme} onChange={(e) => changeTheme(e.target.value as ThemeName)}>
-              {Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-        </aside>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+        {/* barra global: marca › mundo + busca */}
+        <header className="row" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "var(--panel)", flexShrink: 0 }}>
+          <button onClick={() => navigate("/worlds")} title="meus mundos" style={{ display: "flex", alignItems: "center", gap: 7, border: "none", background: "transparent", padding: 0 }}>
+            <IconWorld size={20} color="var(--accent)" />
+            <strong style={{ fontWeight: 500 }}>Loregrid</strong>
+          </button>
+          <span className="muted">›</span>
+          <span className="grow" style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {project?.name ?? "…"}
+          </span>
+          <button onClick={() => setPaletteOpen(true)}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: 260, maxWidth: "34vw", justifyContent: "flex-start", borderRadius: 999, color: "var(--muted)", fontSize: 13 }}>
+            <IconSearch size={16} />
+            <span className="grow" style={{ textAlign: "left" }}>Buscar ou criar…</span>
+            <kbd style={{ fontSize: 11, opacity: 0.7 }}>⌘K</kbd>
+          </button>
+        </header>
 
-        <main style={{ minWidth: 0, position: "relative", display: "flex", flexDirection: "column" }}>
-          <div className="row" style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", background: "var(--panel)", fontSize: 13, flexShrink: 0 }}>
-            <span className="muted">{project?.name ?? "Mundo"}</span>
-            <span className="muted">›</span>
-            <span style={{ fontWeight: 500 }}>{crumb}</span>
-            <span className="grow" />
-            <button onClick={() => setPaletteOpen(true)} title="Buscar / comandos (Ctrl/Cmd+K)" style={{ fontSize: 12, padding: "2px 8px" }}>⌘K</button>
+        {/* barra de lentes */}
+        <div className="row" style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", background: "var(--panel)", flexShrink: 0, gap: 6 }}>
+          <span className="muted" style={{ fontSize: 12 }}>Lentes:</span>
+          {LENSES.map((l) => (
+            <button key={l.key} onClick={() => selectLens(l.key)} style={pill(onIndex && lens === l.key)}>{l.label}</button>
+          ))}
+          <span className="grow" />
+          {SECTIONS.map((s) => (
+            <button key={s.to} onClick={() => navigate(`/worlds/${pid}/${s.to}`)} style={pill(seg === s.to)}>{s.label}</button>
+          ))}
+          <button onClick={() => setImmersive((v) => !v)} title={immersive ? "mostrar contêineres" : "modo imersivo (esconde a lateral)"}
+            style={{ padding: "5px 8px", background: immersive ? "var(--panel-2)" : "transparent" }}>
+            <IconLayoutSidebar size={17} />
+          </button>
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setThemeOpen((v) => !v)} title="tema do mundo" style={{ padding: "5px 8px", background: themeOpen ? "var(--panel-2)" : "transparent" }}>
+              <IconPalette size={17} />
+            </button>
+            {themeOpen && (
+              <div className="stack" style={{ position: "absolute", top: "110%", right: 0, zIndex: 20, background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 10, padding: 6, width: 150, gap: 2, boxShadow: "0 8px 24px rgba(20,24,40,.18)" }}>
+                {Object.entries(THEMES).map(([k, v]) => (
+                  <button key={k} onClick={() => changeTheme(k as ThemeName)}
+                    style={{ textAlign: "left", border: "none", fontSize: 13, background: theme === k ? "var(--panel-2)" : "transparent" }}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-            <ErrorBoundary key={onIndex ? `index:${lens}` : location.pathname}>
-              <Routes>
-                <Route index element={<CanvasView projectId={pid!} projectName={project?.name ?? "Mundo"} lens={lens} onLens={setLens} />} />
-                <Route path="entries" element={<EntriesView projectId={pid!} />} />
-                <Route path="ia" element={<AIView projectId={pid!} />} />
-              </Routes>
-            </ErrorBoundary>
-          </div>
-        </main>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: immersive ? "1fr" : "224px 1fr", flex: 1, minHeight: 0 }}>
+          {!immersive && (
+            <aside style={{ background: "var(--panel)", borderRight: "1px solid var(--border)", padding: "10px 12px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <ContainerTree
+                projectId={pid!}
+                onOpen={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?open=${id}`); }}
+                onPlot={(id) => { setLens("quadro"); navigate(`/worlds/${pid}?plot=${id}`); }}
+                onNew={() => { setLens("quadro"); navigate(`/worlds/${pid}?new=1`); }}
+              />
+            </aside>
+          )}
+
+          <main style={{ minWidth: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+              <ErrorBoundary key={onIndex ? `index:${lens}` : location.pathname}>
+                <Routes>
+                  <Route index element={<CanvasView projectId={pid!} projectName={project?.name ?? "Mundo"} lens={lens} onLens={setLens} />} />
+                  <Route path="entries" element={<EntriesView projectId={pid!} />} />
+                  <Route path="ia" element={<AIView projectId={pid!} />} />
+                </Routes>
+              </ErrorBoundary>
+            </div>
+          </main>
+        </div>
       </div>
       {pid && <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projectId={pid} onLens={selectLens} />}
     </ThemeCtx.Provider>
