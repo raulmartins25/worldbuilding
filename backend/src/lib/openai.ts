@@ -1,7 +1,7 @@
 // Cliente OpenAI mínimo via fetch (sem SDK). Chave lida de OPENAI_API_KEY.
 const EMBED_MODEL = process.env.OPENAI_EMBED_MODEL ?? "text-embedding-3-small";
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL ?? "dall-e-3";
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
 const BASE = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
 
 export const aiEnabled = () => !!process.env.OPENAI_API_KEY;
