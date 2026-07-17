@@ -229,11 +229,14 @@ export async function aiRoutes(app: FastifyInstance) {
         "para desenhar o mapa deste mundo de fantasia. Cubra: terreno/bioma dominante; regiões principais e como se " +
         "posicionam entre si; elementos marcantes (mares, montanhas, florestas, desertos, cidades); e o ESTILO visual " +
         "(ex.: mapa antigo em pergaminho, atlas pintado à mão, estilo Tolkien). Use o CONTEXTO do mundo para não " +
-        "perguntar o óbvio (aproveite regiões/locais já existentes). Responda SEMPRE em JSON: " +
-        '{"ask":"próxima pergunta"} enquanto precisar de mais informação, OU {"prompt":"..."} quando já tiver o ' +
-        "suficiente. Nesse caso 'prompt' é uma descrição RICA em INGLÊS para um gerador de imagens desenhar o mapa " +
-        "(inclua estilo cartográfico, regiões nomeadas, geografia, paleta; peça 'a fantasy world map, top-down', sem " +
-        "texto ilegível). Nunca retorne 'ask' e 'prompt' juntos.\n\nCONTEXTO DO MUNDO:\n" + text,
+        "perguntar o óbvio (aproveite regiões/locais já existentes).\n" +
+        "Responda SEMPRE em JSON com EXATAMENTE UM campo:\n" +
+        '- Para continuar: {"ask": <string>} onde a string é uma pergunta CONCRETA e específica a este mundo. ' +
+        "NUNCA use texto genérico/placeholder (jamais responda literalmente 'próxima pergunta') e NUNCA repita uma pergunta já feita.\n" +
+        '- Quando já tiver o suficiente: {"prompt": <string>} onde a string é uma descrição RICA em INGLÊS para um ' +
+        "gerador de imagens desenhar o mapa (inclua estilo cartográfico, regiões nomeadas, geografia, paleta; comece por " +
+        "'a fantasy world map, top-down'; sem texto ilegível). " +
+        "Nunca inclua 'ask' e 'prompt' juntos.\n\nCONTEXTO DO MUNDO:\n" + text,
     };
     const raw = await chat([sys, ...messages], { json: true, temperature: 0.6 });
     let out: { ask?: string; prompt?: string } = {};
