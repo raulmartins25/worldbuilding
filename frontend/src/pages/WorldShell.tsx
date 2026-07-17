@@ -78,7 +78,7 @@ export function WorldShell() {
   }
 
   const pill = (active: boolean) => ({
-    padding: "5px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+    padding: "5px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" as const,
     border: `1px solid ${active ? "transparent" : "var(--border)"}`,
     background: active ? "var(--accent)" : "transparent",
     color: active ? "#fff" : "var(--muted)",
