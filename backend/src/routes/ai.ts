@@ -214,6 +214,31 @@ export async function aiRoutes(app: FastifyInstance) {
     reply.raw.end();
   });
 
+  // assistente da cena (modo foco): sussurro criativo + checagem de continuidade contra a bíblia, numa chamada
+  app.post("/projects/:pid/scenes/assist", async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { text } = z.object({ text: z.string().default("") }).parse(req.body);
+    const { text: world } = await buildProjectContext(pid);
+    const raw = await chat([
+      {
+        role: "system",
+        content:
+          "Você é o assistente de escrita do autor, guardião da BÍBLIA deste mundo de fantasia. Recebe um TRECHO de " +
+          'manuscrito (uma cena) e a BÍBLIA. Responda SOMENTE JSON: {"whisper": string, "continuity": [{"issue": string}]}.\n' +
+          "- 'whisper': UMA sugestão curta e sutil (máx 240 caracteres, em português) que aprofunde a cena — motivação, " +
+          "tensão ou subtexto — baseada na personalidade e nas relações das fichas envolvidas. Tom de sussurro, nunca uma ordem.\n" +
+          "- 'continuity': lista (máx 3) de CONTRADIÇÕES entre o trecho e a bíblia (fatos, status como exilado/morto, " +
+          "localização, linha do tempo). Cada item {\"issue\"}: 1 frase citando a ficha e o conflito. Vazio se nada contradiz.",
+      },
+      { role: "user", content: "BÍBLIA:\n" + world + "\n\nTRECHO DA CENA:\n" + (text.slice(0, 6000) || "(cena vazia)") },
+    ], { json: true, temperature: 0.5 });
+    let out: { whisper?: string; continuity?: { issue?: string }[] } = {};
+    try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    const continuity = Array.isArray(out.continuity) ? out.continuity.filter((c) => c?.issue).map((c) => ({ issue: c.issue as string })) : [];
+    return { whisper: out.whisper ?? null, continuity };
+  });
+
   // gerador de mapa por entrevista: a IA entrevista sobre geografia/estilo e devolve o prompt de imagem
   app.post("/projects/:pid/maps/interview", async (req) => {
     const { pid } = req.params as { pid: string };

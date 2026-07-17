@@ -146,14 +146,20 @@ input:focus, textarea:focus, select:focus {
   display: flex; flex-direction: column; overflow: auto;
 }
 .focus-bar {
-  position: sticky; top: 0; display: flex; justify-content: flex-end; gap: 8px;
-  padding: 14px 18px;
+  position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 14px 18px; background: linear-gradient(#14131a, #14131aee 70%, #14131a00);
 }
 .focus-bar button {
   display: inline-flex; align-items: center; gap: 6px;
   background: transparent; border: 1px solid #3a3742; color: #b8b2a4;
 }
 .focus-bar button:hover { background: #211f28; }
+.focus-bar-right { display: flex; align-items: center; gap: 10px; }
+.focus-words { font-size: 12px; color: #6b6658; font-family: var(--font-sans); }
+.focus-crumb { display: flex; align-items: center; gap: 8px; font-family: var(--font-sans); font-size: 13px; min-width: 0; }
+.focus-crumb-world { color: #8a8474; }
+.focus-crumb-sep { color: #55503f; }
+.focus-crumb-scene { color: #e9e4d8; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-page { max-width: 720px; width: 100%; margin: 2vh auto 12vh; padding: 0 24px; }
 .focus-title { font-family: var(--font-serif); font-weight: 500; font-size: 2rem; color: #f2ecdd; margin: 0 0 1.2rem; }
 .focus-editor .ProseMirror {
@@ -176,6 +182,36 @@ input:focus, textarea:focus, select:focus {
 .focus-scene-item:first-of-type { border-top: none; }
 .focus-scene-name { font-size: 13px; color: #e9e4d8; }
 .focus-scene-sum { font-size: 12px; color: #8a8474; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.focus-scene-avatar { flex-shrink: 0; width: 26px; height: 26px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
+.focus-scene-role { font-size: 11px; opacity: 0.85; }
+
+/* IA de cena (sussurro) */
+.focus-whisper {
+  margin-top: 12px; padding: 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 20%, #1e1c24);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, #2f2c38);
+}
+.focus-whisper-head { display: flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: color-mix(in srgb, var(--accent) 55%, #c9c3e8); margin-bottom: 5px; }
+.focus-whisper-body { font-size: 13px; color: #ddd8ea; line-height: 1.5; }
+
+/* botão checar continuidade + dica */
+.focus-check {
+  width: 100%; margin-top: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; border: 1px solid #3a3742; color: #cfc9ba; font-size: 13px;
+}
+.focus-check:hover:not(:disabled) { background: #211f28; }
+.focus-hint { margin-top: 10px; font-size: 12px; color: #6b6658; text-align: center; }
+
+/* aviso de continuidade inline no manuscrito */
+.focus-continuity {
+  display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 20px;
+  padding: 10px 12px; border-radius: 8px; max-width: 620px;
+  background: color-mix(in srgb, var(--warn) 16%, #1a1810);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, #2f2c38);
+  color: #e7c98a; font-size: 13px; font-family: var(--font-sans); line-height: 1.5;
+}
+.focus-continuity svg { flex-shrink: 0; margin-top: 1px; }
+.focus-continuity strong { color: #f0d79a; }
 
 /* ── menções @ ──────────────────────────────────────────────────────────── */
 .mention {
