@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { IconPlus, IconX, IconDots, IconSparkles, IconArrowUpRight, IconMapPin } from "@tabler/icons-react";
+import { useMemo, useRef, useState } from "react";
+import { IconPlus, IconX, IconDots, IconSparkles, IconArrowUpRight, IconMapPin, IconFileImport } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import { ENTRY_TYPES, type EntryType } from "../lib/types";
 import { typeMeta } from "../lib/entryTypes";
@@ -8,7 +8,24 @@ import { TYPE_TEMPLATES } from "../lib/templates";
 
 export interface NewCardData {
   type: EntryType; title: string; summary?: string;
-  importance: number; metadata: Record<string, unknown>;
+  importance: number; metadata: Record<string, unknown>; body?: Record<string, unknown>;
+}
+
+// tipos cujo corpo (manuscrito) recebe o texto importado
+const MANUSCRIPT = new Set<EntryType>(["chapter", "scene"]);
+
+const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+
+// texto → doc Tiptap (parágrafos) para o corpo de capítulos/cenas
+function textToDoc(text: string): Record<string, unknown> {
+  const paras = text.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  return { type: "doc", content: paras.map((p) => ({ type: "paragraph", content: [{ type: "text", text: p }] })) };
 }
 
 // tipos em destaque na grade; o resto entra pelo "Mais…"
@@ -30,8 +47,11 @@ export function NewCardModal({
   const [importance, setImportance] = useState(2);
   const [meta, setMeta] = useState<Record<string, string>>({});
   const [drafting, setDrafting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState<{ name: string; words: number; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const m = typeMeta(type);
   const tpl = TYPE_TEMPLATES[type] ?? [];
@@ -41,6 +61,25 @@ export function NewCardModal({
   function pick(t: EntryType) {
     setType(t);
     setMeta({}); // template muda com o tipo
+  }
+
+  async function importFile(file: File) {
+    setImporting(true); setError(null);
+    try {
+      const dataBase64 = await fileToBase64(file);
+      const r = await api.post<{ title: string; summary: string; metadata: Record<string, unknown>; text: string; words: number }>(
+        `/projects/${projectId}/entries/import`,
+        { filename: file.name, dataBase64, type, fields: tpl.map((f) => ({ key: f.key, label: f.label, options: f.options })) },
+      );
+      if (r.title) setTitle(r.title);
+      if (r.summary) setSummary(r.summary);
+      const filled: Record<string, string> = {};
+      for (const [k, v] of Object.entries(r.metadata ?? {})) filled[k] = v == null ? "" : String(v);
+      setMeta((prev) => ({ ...prev, ...filled }));
+      setImported({ name: file.name, words: r.words, text: r.text });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "não consegui ler o arquivo");
+    } finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
   }
 
   async function draft() {
@@ -66,7 +105,8 @@ export function NewCardModal({
     try {
       const metadata: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(meta)) if (v.trim()) metadata[k] = v;
-      await onSubmit({ type, title: title.trim(), summary: summary.trim() || undefined, importance, metadata });
+      const body = imported && MANUSCRIPT.has(type) ? textToDoc(imported.text) : undefined;
+      await onSubmit({ type, title: title.trim(), summary: summary.trim() || undefined, importance, metadata, body });
     } catch (e) {
       setError(e instanceof Error ? e.message : "erro");
       setSaving(false);
@@ -163,8 +203,31 @@ export function NewCardModal({
                   Preenche o template respeitando a magia, o clima e o tom de {projectName}. Você edita depois.
                 </div>
               </div>
-              <button className="primary" onClick={draft} disabled={drafting}>
+              <button className="primary" onClick={draft} disabled={drafting || importing}>
                 {drafting ? "Rascunhando…" : <>Gerar <IconArrowUpRight size={14} /></>}
+              </button>
+            </div>
+          </div>
+
+          {/* importar documento — a IA extrai e preenche a partir do arquivo */}
+          <div className="card" style={{ marginTop: 12, borderColor: "var(--accent-2)", background: "color-mix(in srgb, var(--accent-2) 8%, var(--panel))" }}>
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <IconFileImport size={16} color="var(--accent-2)" style={{ marginTop: 2 }} />
+              <div className="grow">
+                <div style={{ fontWeight: 500, color: "var(--accent-2)" }}>Importar de um documento</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Envie um <strong>.docx</strong> ou <strong>.pdf</strong> — a IA lê e preenche a ficha.{MANUSCRIPT.has(type) ? " O texto vai para o manuscrito." : ""}
+                </div>
+                {imported && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    ✓ {imported.name} · {imported.words.toLocaleString("pt-BR")} palavras lidas{MANUSCRIPT.has(type) ? " (no manuscrito)" : ""}
+                  </div>
+                )}
+              </div>
+              <input ref={fileRef} type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); }} />
+              <button onClick={() => fileRef.current?.click()} disabled={importing || drafting}>
+                {importing ? "Lendo…" : "Importar"}
               </button>
             </div>
           </div>

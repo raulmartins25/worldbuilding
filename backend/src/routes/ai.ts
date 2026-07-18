@@ -6,6 +6,23 @@ import { entries, relationships, memberships, attributes, aiChecks, maps } from 
 import { httpError, requireEntry, requireProject } from "../lib/guard";
 import { aiEnabled, embed, chat, chatStream, generateImage } from "../lib/openai";
 import { embedEntry, buildEntryText } from "../lib/embedding";
+import mammoth from "mammoth";
+
+// extrai texto de um .docx (mammoth) ou .pdf (unpdf) a partir do buffer
+async function extractDocText(filename: string, buf: Buffer): Promise<string> {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".docx")) {
+    const r = await mammoth.extractRawText({ buffer: buf });
+    return r.value;
+  }
+  if (lower.endsWith(".pdf")) {
+    const { getDocumentProxy, extractText } = await import("unpdf");
+    const pdf = await getDocumentProxy(new Uint8Array(buf));
+    const { text } = await extractText(pdf, { mergePages: true });
+    return Array.isArray(text) ? text.join("\n") : text;
+  }
+  throw httpError(400, "unsupported_file");
+}
 
 // monta um retrato textual compacto do mundo para a IA
 async function buildProjectContext(pid: string): Promise<{ text: string; titleById: Record<string, string> }> {
@@ -212,6 +229,45 @@ export async function aiRoutes(app: FastifyInstance) {
       send({ error: e instanceof Error ? e.message : "erro" });
     }
     reply.raw.end();
+  });
+
+  // importar .docx/.pdf: extrai o texto e a IA preenche a ficha do tipo (fiel ao documento)
+  app.post("/projects/:pid/entries/import", { bodyLimit: 25 * 1024 * 1024 }, async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { filename, dataBase64, type, fields } = z.object({
+      filename: z.string().min(1),
+      dataBase64: z.string().min(1),
+      type: z.string().min(1),
+      fields: z.array(z.object({ key: z.string(), label: z.string(), options: z.array(z.string()).optional() })).default([]),
+    }).parse(req.body);
+
+    const buf = Buffer.from(dataBase64, "base64");
+    const text = (await extractDocText(filename, buf)).replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+    if (!text) throw httpError(422, "empty_document");
+
+    const { text: world } = await buildProjectContext(pid);
+    const keys = fields
+      .map((f) => `- ${f.key} (${f.label})${f.options?.length ? ` — UM de: ${f.options.join(", ")}` : ""}`)
+      .join("\n") || "(sem campos próprios)";
+    const raw = await chat([
+      {
+        role: "system",
+        content:
+          "Você preenche uma ficha da bíblia de um mundo de fantasia a partir de um DOCUMENTO enviado pelo autor. " +
+          "Extraia as informações do DOCUMENTO para os campos do template. Use SOMENTE o que está no documento — NÃO invente; " +
+          "deixe vazio o campo que o documento não cobrir. Use o CONTEXTO do mundo apenas para desambiguar nomes já existentes. " +
+          'Responda SOMENTE JSON: {"title": string, "summary": string, "metadata": {<as chaves do template>}}. ' +
+          "'title' = um nome curto e específico para a ficha; 'summary' = UMA frase que a resume. Em português.\n\nCHAVES DO TEMPLATE:\n" + keys,
+      },
+      { role: "user", content: "CONTEXTO DO MUNDO:\n" + world.slice(0, 6000) + `\n\nDOCUMENTO (tipo "${type}"):\n` + text.slice(0, 16000) },
+    ], { json: true, temperature: 0.3 });
+    let out: { title?: string; summary?: string; metadata?: Record<string, unknown> } = {};
+    try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    return {
+      title: out.title ?? "", summary: out.summary ?? "", metadata: out.metadata ?? {},
+      text, words: text.split(/\s+/).filter(Boolean).length,
+    };
   });
 
   // "deixar a IA rascunhar": preenche o template do tipo respeitando magia/clima/tom do mundo

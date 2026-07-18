@@ -98,12 +98,14 @@ export async function boardRoutes(app: FastifyInstance) {
       summary: z.string().optional(),
       importance: z.number().int().min(0).max(5).optional(),
       metadata: z.record(z.any()).optional(),
+      body: z.record(z.any()).optional(),
       x: z.number(), y: z.number(),
     }).parse(req.body);
     const result = await db.transaction(async (tx) => {
       const [entry] = await tx.insert(entries).values({
         userId: req.user.sub, projectId: board.projectId, type: body.type, title: body.title,
         summary: body.summary, importance: body.importance ?? 0, metadata: body.metadata ?? {},
+        body: body.body ?? {},
       }).returning();
       const [node] = await tx.insert(boardNodes).values({
         projectId: board.projectId, boardId: id, entryId: entry.id, kind: "card", x: body.x, y: body.y,
