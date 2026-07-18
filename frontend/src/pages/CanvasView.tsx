@@ -496,9 +496,15 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
     await load();
   };
 
-  const submitNewCard = async (d: NewCardData) => {
+  const submitNewCard = async (d: NewCardData | NewCardData[]) => {
     if (!boardId) return;
-    await api.post(`/boards/${boardId}/cards`, { ...d, x: 40 + Math.random() * 240, y: 40 + Math.random() * 200 });
+    const list = Array.isArray(d) ? d : [d];
+    // dispõe em grade para não empilhar quando são vários
+    for (let i = 0; i < list.length; i++) {
+      const x = 60 + (i % 4) * 220 + Math.random() * 20;
+      const y = 70 + Math.floor(i / 4) * 130 + Math.random() * 20;
+      await api.post(`/boards/${boardId}/cards`, { ...list[i], x, y });
+    }
     setNewOpen(false);
     await load();
   };

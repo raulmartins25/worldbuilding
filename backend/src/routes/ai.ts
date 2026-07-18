@@ -254,20 +254,22 @@ export async function aiRoutes(app: FastifyInstance) {
       {
         role: "system",
         content:
-          "Você preenche uma ficha da bíblia de um mundo de fantasia a partir de um DOCUMENTO enviado pelo autor. " +
-          "Extraia as informações do DOCUMENTO para os campos do template. Use SOMENTE o que está no documento — NÃO invente; " +
-          "deixe vazio o campo que o documento não cobrir. Use o CONTEXTO do mundo apenas para desambiguar nomes já existentes. " +
-          'Responda SOMENTE JSON: {"title": string, "summary": string, "metadata": {<as chaves do template>}}. ' +
-          "'title' = um nome curto e específico para a ficha; 'summary' = UMA frase que a resume. Em português.\n\nCHAVES DO TEMPLATE:\n" + keys,
+          `Você extrai fichas de um mundo de fantasia a partir de um DOCUMENTO enviado pelo autor. Encontre TODAS as fichas ` +
+          `do tipo "${type}" descritas no documento — pode haver VÁRIAS (ex.: vários personagens num mesmo texto). ` +
+          "Para CADA uma, preencha os campos do template SOMENTE com o que o documento diz sobre ela — NÃO invente; deixe " +
+          "vazio o campo que o documento não cobrir. Use o CONTEXTO do mundo apenas para desambiguar nomes já existentes. " +
+          'Responda SOMENTE JSON: {"entities":[{"title":string,"summary":string,"metadata":{<as chaves do template>}}]}. ' +
+          "'title' = nome curto e específico; 'summary' = UMA frase. Máximo 30 fichas. Em português.\n\nCHAVES DO TEMPLATE:\n" + keys,
       },
       { role: "user", content: "CONTEXTO DO MUNDO:\n" + world.slice(0, 6000) + `\n\nDOCUMENTO (tipo "${type}"):\n` + text.slice(0, 16000) },
     ], { json: true, temperature: 0.3 });
-    let out: { title?: string; summary?: string; metadata?: Record<string, unknown> } = {};
+    let out: { entities?: { title?: string; summary?: string; metadata?: Record<string, unknown> }[] } = {};
     try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
-    return {
-      title: out.title ?? "", summary: out.summary ?? "", metadata: out.metadata ?? {},
-      text, words: text.split(/\s+/).filter(Boolean).length,
-    };
+    const entities = (Array.isArray(out.entities) ? out.entities : [])
+      .filter((e) => e?.title)
+      .slice(0, 30)
+      .map((e) => ({ title: String(e.title), summary: e.summary ? String(e.summary) : "", metadata: e.metadata ?? {} }));
+    return { entities, text, words: text.split(/\s+/).filter(Boolean).length };
   });
 
   // "deixar a IA rascunhar": preenche o template do tipo respeitando magia/clima/tom do mundo
