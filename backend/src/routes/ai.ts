@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { entries, relationships, memberships, attributes, aiChecks, maps } from "../db/schema";
+import { entries, relationships, memberships, attributes, aiChecks, maps, boards, boardNodes, boardEdges } from "../db/schema";
 import { httpError, requireEntry, requireProject } from "../lib/guard";
 import { aiEnabled, embed, chat, chatStream, generateImage } from "../lib/openai";
 import { embedEntry, buildEntryText } from "../lib/embedding";
@@ -23,6 +23,20 @@ async function extractDocText(filename: string, buf: Buffer): Promise<string> {
   }
   throw httpError(400, "unsupported_file");
 }
+
+// texto → doc Tiptap (parágrafos), para o corpo de capítulos/cenas
+function textToDoc(text: string): Record<string, unknown> {
+  const paras = text.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  return { type: "doc", content: paras.map((p) => ({ type: "paragraph", content: [{ type: "text", text: p }] })) };
+}
+const MANUSCRIPT_TYPES = new Set(["chapter", "scene"]);
+const REL_VOCAB = ["aliado_de", "inimigo_de", "pai_de", "mae_de", "casado_com", "governa", "pertence_a", "aparece_em", "contem"];
+const ENTRY_TYPES = [
+  "character", "location", "region", "faction", "item", "magic_system",
+  "species", "creature", "deity", "religion", "event", "lore",
+  "language", "scene", "chapter", "note",
+] as const;
+type EntryTypeName = (typeof ENTRY_TYPES)[number];
 
 // monta um retrato textual compacto do mundo para a IA
 async function buildProjectContext(pid: string): Promise<{ text: string; titleById: Record<string, string> }> {
@@ -270,6 +284,132 @@ export async function aiRoutes(app: FastifyInstance) {
       .slice(0, 30)
       .map((e) => ({ title: String(e.title), summary: e.summary ? String(e.summary) : "", metadata: e.metadata ?? {} }));
     return { entities, text, words: text.split(/\s+/).filter(Boolean).length };
+  });
+
+  // INGESTÃO EM LOTE: vários documentos → a IA cria as fichas (mesclando complementares) e as conexões
+  app.post("/projects/:pid/import-batch", { bodyLimit: 60 * 1024 * 1024 }, async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { documents, types } = z.object({
+      documents: z.array(z.object({ filename: z.string().min(1), dataBase64: z.string().min(1) })).min(1).max(15),
+      types: z.array(z.object({
+        type: z.enum(ENTRY_TYPES),
+        fields: z.array(z.object({ key: z.string(), label: z.string(), options: z.array(z.string()).optional() })).default([]),
+      })).min(1),
+    }).parse(req.body);
+
+    // 1) extrai texto de cada documento
+    const docs: { name: string; full: string }[] = [];
+    for (const d of documents) {
+      let text = "";
+      try { text = (await extractDocText(d.filename, Buffer.from(d.dataBase64, "base64"))).replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim(); }
+      catch { text = ""; }
+      if (text) docs.push({ name: d.filename, full: text });
+    }
+    if (docs.length === 0) throw httpError(422, "no_text_extracted");
+
+    const corpus = docs.map((d) => `### DOCUMENTO: ${d.name}\n${d.full.slice(0, 9000)}`).join("\n\n").slice(0, 42000);
+    const allowed = types.map((t) => t.type);
+    const tplHint = types.map((t) => {
+      const keys = t.fields.map((f) => `${f.key}(${f.label})${f.options?.length ? `[${f.options.join("/")}]` : ""}`).join(", ") || "sem campos";
+      return `- ${t.type}: ${keys}`;
+    }).join("\n");
+    const { text: world } = await buildProjectContext(pid);
+
+    // 2) a IA lê o corpus inteiro e devolve fichas + relações
+    const raw = await chat([
+      {
+        role: "system",
+        content:
+          "Você é um construtor de mundos. Recebe VÁRIOS DOCUMENTOS (um corpus) e monta a bíblia de um mundo de fantasia. " +
+          "Muitos documentos são COMPLEMENTARES — partes do mesmo conceito espalhadas em arquivos diferentes (ex.: 'Sistema de Magia' " +
+          "e 'Níveis de Magia'). MESCLE numa ficha só quando descreverem a MESMA coisa; crie fichas DISTINTAS ligadas por relação " +
+          "quando forem conceitos relacionados mas diferentes. Use SOMENTE os TIPOS permitidos. Preencha os campos do template de " +
+          "cada tipo SOMENTE com o que os documentos dizem (não invente; deixe vazio o não coberto). " +
+          "Identifique também as RELAÇÕES entre as fichas (e com as fichas já existentes no CONTEXTO). " +
+          'Responda SOMENTE JSON: {"entities":[{"type","title","summary","sourceDoc","metadata":{<campos>}}],' +
+          '"relationships":[{"source","target","type","reason"}]}. ' +
+          `Tipos de relação válidos: ${REL_VOCAB.join(", ")} (use "contem" para hierarquia/contenção, ex.: um sistema CONTÉM seus níveis). ` +
+          "'source'/'target' = títulos EXATOS de fichas (novas ou do contexto). 'sourceDoc' = nome do documento de origem (ou null). " +
+          "Máx 60 fichas. Em português.\n\nTIPOS PERMITIDOS E CAMPOS:\n" + tplHint + "\n\nCONTEXTO (fichas já existentes):\n" + world.slice(0, 4000),
+      },
+      { role: "user", content: corpus },
+    ], { json: true, temperature: 0.35 });
+
+    let parsed: {
+      entities?: { type?: string; title?: string; summary?: string; sourceDoc?: string; metadata?: Record<string, unknown> }[];
+      relationships?: { source?: string; target?: string; type?: string; reason?: string }[];
+    } = {};
+    try { parsed = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    const aiEntities = (parsed.entities ?? []).filter((e) => e?.title && e?.type && (allowed as string[]).includes(e.type as string)).slice(0, 60);
+    const aiRels = (parsed.relationships ?? []).filter((r) => r?.source && r?.target && REL_VOCAB.includes(r.type as string));
+
+    // 3) board padrão do projeto
+    let [board] = await db.select().from(boards).where(eq(boards.projectId, pid)).limit(1);
+    if (!board) [board] = await db.insert(boards).values({ projectId: pid, name: "Main" }).returning();
+
+    // fichas já existentes (dedup por título) + nodes existentes
+    const existingEntries = await db.select({ id: entries.id, title: entries.title }).from(entries).where(eq(entries.projectId, pid));
+    const entryByTitle = new Map(existingEntries.map((e) => [e.title.trim().toLowerCase(), e.id]));
+    const existingNodes = await db.select().from(boardNodes).where(eq(boardNodes.boardId, board.id));
+    const nodeByEntry = new Map(existingNodes.filter((n) => n.entryId).map((n) => [n.entryId as string, n.id]));
+
+    const fullByDoc = new Map(docs.map((d) => [d.name, d.full]));
+    let createdCards = 0;
+    const gridStart = existingNodes.length; // posiciona os novos abaixo do que já existe
+    let gi = 0;
+    const nodeIdByTitle = new Map<string, string>();
+    const entryIdByTitle = new Map<string, string>();
+    for (const [t, id] of entryByTitle) entryIdByTitle.set(t, id);
+
+    for (const e of aiEntities) {
+      const key = (e.title as string).trim().toLowerCase();
+      let entryId = entryByTitle.get(key);
+      if (!entryId) {
+        const metadata: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(e.metadata ?? {})) if (v != null && String(v).trim()) metadata[k] = v;
+        const body = e.sourceDoc && MANUSCRIPT_TYPES.has(e.type as string) && fullByDoc.get(e.sourceDoc)
+          ? textToDoc(fullByDoc.get(e.sourceDoc)!) : {};
+        const [entry] = await db.insert(entries).values({
+          userId: req.user.sub, projectId: pid, type: e.type as EntryTypeName, title: (e.title as string).trim(),
+          summary: e.summary ? String(e.summary) : null, metadata, body,
+        }).returning();
+        entryId = entry.id;
+        entryByTitle.set(key, entryId);
+        void embedEntry(entryId).catch(() => {});
+        createdCards++;
+      }
+      entryIdByTitle.set(key, entryId);
+      // garante um node no board
+      let nodeId = nodeByEntry.get(entryId);
+      if (!nodeId) {
+        const col = (gridStart + gi) % 5, row = Math.floor((gridStart + gi) / 5);
+        const [n] = await db.insert(boardNodes).values({
+          projectId: pid, boardId: board.id, entryId, kind: "card", x: 60 + col * 220, y: 60 + row * 130,
+        }).returning();
+        nodeId = n.id; nodeByEntry.set(entryId, nodeId); gi++;
+      }
+      nodeIdByTitle.set(key, nodeId);
+    }
+
+    // 4) cria as relações entre as fichas
+    let createdRels = 0;
+    for (const r of aiRels) {
+      const sk = (r.source as string).trim().toLowerCase(), tk = (r.target as string).trim().toLowerCase();
+      const sEntry = entryIdByTitle.get(sk), tEntry = entryIdByTitle.get(tk);
+      if (!sEntry || !tEntry || sEntry === tEntry) continue;
+      if (r.type === "contem") {
+        try { await db.insert(memberships).values({ projectId: pid, containerId: sEntry, memberId: tEntry }); createdRels++; }
+        catch { /* membership já existe */ }
+        continue;
+      }
+      await db.insert(relationships).values({ projectId: pid, sourceId: sEntry, targetId: tEntry, type: r.type as string });
+      const sNode = nodeIdByTitle.get(sk), tNode = nodeIdByTitle.get(tk);
+      if (sNode && tNode) await db.insert(boardEdges).values({ projectId: pid, boardId: board.id, sourceNodeId: sNode, targetNodeId: tNode, label: r.type as string });
+      createdRels++;
+    }
+
+    return { cards: createdCards, relationships: createdRels, entities: aiEntities.map((e) => ({ type: e.type, title: e.title })), docs: docs.map((d) => d.name) };
   });
 
   // "deixar a IA rascunhar": preenche o template do tipo respeitando magia/clima/tom do mundo

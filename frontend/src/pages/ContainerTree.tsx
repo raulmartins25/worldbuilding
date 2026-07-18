@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { IconTrash } from "@tabler/icons-react";
+import { IconTrash, IconFileImport } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
@@ -8,7 +8,7 @@ import { DND_ENTRY } from "./CanvasView";
 interface Membership { containerId: string; memberId: string; }
 interface EMeta { title: string; type: string; }
 
-export function ContainerTree({ projectId, onOpen, onFrame, onNew }: { projectId: string; onOpen: (id: string) => void; onFrame: (id: string) => void; onNew?: () => void }) {
+export function ContainerTree({ projectId, onOpen, onFrame, onNew, onImport }: { projectId: string; onOpen: (id: string) => void; onFrame: (id: string) => void; onNew?: () => void; onImport?: () => void }) {
   const [emap, setEmap] = useState<Record<string, EMeta>>({});
   const [childrenOf, setChildrenOf] = useState<Record<string, string[]>>({});
   const [roots, setRoots] = useState<string[]>([]);
@@ -78,6 +78,9 @@ export function ContainerTree({ projectId, onOpen, onFrame, onNew }: { projectId
         <button onClick={() => setCollapsed((c) => !c)} title="recolher" style={{ padding: 0, border: "none", background: "transparent", color: "var(--muted)", fontSize: 10, width: 14 }}>{collapsed ? "▸" : "▾"}</button>
         <span className="muted grow" style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: ".05em" }}>Contêineres</span>
         <button onClick={load} title="recarregar" style={{ padding: "0 6px", fontSize: 12, border: "none", background: "transparent", color: "var(--muted)" }}>↻</button>
+        {onImport && (
+          <button onClick={onImport} title="construir mundo com documentos (importar vários)" style={{ padding: "0 5px", border: "none", background: "transparent", color: "var(--muted)", display: "inline-flex" }}><IconFileImport size={15} /></button>
+        )}
         {onNew && (
           <button onClick={onNew} title="novo card" style={{ padding: "0 6px", fontSize: 16, lineHeight: 1, border: "none", background: "transparent", color: "var(--muted)" }}>+</button>
         )}

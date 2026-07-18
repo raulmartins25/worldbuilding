@@ -11,6 +11,7 @@ import { EntriesView } from "./EntriesView";
 import { AIView } from "./AIView";
 import { CommandPalette } from "./CommandPalette";
 import { ContainerTree } from "./ContainerTree";
+import { BatchImportModal } from "./BatchImportModal";
 
 // lentes espaciais: camadas sobre o MESMO canvas-home (rota índice), alternadas sem trocar de tela
 const LENSES: { key: Lens; label: string }[] = [
@@ -36,6 +37,7 @@ export function WorldShell() {
   const [themeOpen, setThemeOpen] = useState(false);
   const [immersive, setImmersive] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [lens, setLens] = useState<Lens>("quadro");
   const mobile = useIsMobile();
 
@@ -93,6 +95,7 @@ export function WorldShell() {
       onOpen={(id) => { setLens("quadro"); setDrawerOpen(false); navigate(`/worlds/${pid}?open=${id}`); }}
       onFrame={(id) => { setLens("quadro"); setDrawerOpen(false); navigate(`/worlds/${pid}?frame=${id}`); }}
       onNew={() => { setLens("quadro"); setDrawerOpen(false); navigate(`/worlds/${pid}?new=1`); }}
+      onImport={() => { setDrawerOpen(false); setBatchOpen(true); }}
     />
   );
   const showDock = !mobile && !immersive;
@@ -196,6 +199,14 @@ export function WorldShell() {
         </div>
       )}
       {pid && <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projectId={pid} onLens={selectLens} />}
+      {batchOpen && pid && (
+        <BatchImportModal
+          projectId={pid}
+          projectName={project?.name ?? "Mundo"}
+          onClose={() => setBatchOpen(false)}
+          onDone={() => { setBatchOpen(false); setLens("quadro"); if (!onIndex) navigate(`/worlds/${pid}`); window.dispatchEvent(new Event("loregrid:refresh")); }}
+        />
+      )}
     </ThemeCtx.Provider>
   );
 }
