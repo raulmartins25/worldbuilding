@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
-  ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, NodeResizer,
+  ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, NodeResizer, SelectionMode,
   useNodesState, useEdgesState,
   type Node, type Edge, type NodeProps, type NodeChange, type Connection, type ReactFlowInstance,
 } from "@xyflow/react";
@@ -553,7 +553,8 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
   }, [lens, rfi, load]);
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
+    <div style={{ width: "100%", height: "100%", position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}
+      onContextMenu={mobile ? undefined : (e) => e.preventDefault()}>{/* botão direito arrasta o quadro (sem menu do navegador) */}
       {/* seletor de lente do canvas — Quadro↔Grafo compartilham o React Flow (mesmos nós, outra lente) */}
       {(lens === "quadro" || lens === "grafo") && (
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 7, display: "flex", gap: 2, background: "var(--panel)", padding: 4, borderRadius: 999, border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(20,24,40,.10)" }}>
@@ -667,6 +668,9 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
             elevateNodesOnSelect={false}
             zoomOnDoubleClick={!mobile}
             minZoom={0.2}
+            panOnDrag={mobile ? true : [1, 2]}
+            selectionOnDrag={!mobile}
+            selectionMode={SelectionMode.Partial}
             fitView
           >
             <Background color={canvasDot(theme)} gap={22} />
@@ -686,6 +690,9 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
               nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes}
               onNodesChange={onGNodesChange} onEdgesChange={onGEdgesChange}
               zoomOnDoubleClick={!mobile}
+              panOnDrag={mobile ? true : [1, 2]}
+              selectionOnDrag={!mobile}
+              selectionMode={SelectionMode.Partial}
               fitView minZoom={0.1}
             >
               <Background color={canvasDot(theme)} gap={22} />
