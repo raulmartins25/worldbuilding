@@ -388,6 +388,13 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
 
   useEffect(() => { void load(); }, [load]);
 
+  // recarrega quando algo muda fora do canvas (ex.: excluir ficha pela sidebar)
+  useEffect(() => {
+    const h = () => void load();
+    window.addEventListener("loregrid:refresh", h);
+    return () => window.removeEventListener("loregrid:refresh", h);
+  }, [load]);
+
   const descendantNodeIds = (containerEntryId: string): string[] => {
     const entryToNode: Record<string, string> = {};
     for (const n of nodesRef.current) {

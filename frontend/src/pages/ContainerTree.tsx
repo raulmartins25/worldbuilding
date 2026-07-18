@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { IconTrash } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
@@ -31,6 +32,14 @@ export function ContainerTree({ projectId, onOpen, onFrame, onNew }: { projectId
 
   const toggle = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const remove = async (id: string) => {
+    const t = emap[id]?.title ?? "esta ficha";
+    if (!confirm(`Excluir "${t}"? Remove o card do quadro, as relações e menções dela. Não dá pra desfazer.`)) return;
+    await api.del(`/entries/${id}`);
+    await load();
+    window.dispatchEvent(new Event("loregrid:refresh")); // avisa o canvas
+  };
+
   const renderNode = (id: string, depth: number, seen: Set<string>) => {
     const kids = childrenOf[id] ?? [];
     const isContainer = kids.length > 0;
@@ -55,6 +64,7 @@ export function ContainerTree({ projectId, onOpen, onFrame, onNew }: { projectId
           {isContainer && (
             <button onClick={() => onFrame(id)} title="criar moldura com os membros dentro" style={{ padding: "0 4px", border: "none", background: "transparent", color: "var(--muted)", fontSize: 12 }}>▦</button>
           )}
+          <button onClick={() => void remove(id)} title="excluir ficha" style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--muted)", display: "inline-flex" }}><IconTrash size={13} /></button>
           <span title="arraste para o quadro" style={{ color: "var(--border-strong)", fontSize: 11, cursor: "grab", lineHeight: 1 }}>⠿</span>
         </div>
         {isContainer && open && kids.filter((k) => !seen.has(k)).map((k) => renderNode(k, depth + 1, new Set([...seen, id])))}

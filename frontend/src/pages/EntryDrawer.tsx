@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { IconTrash } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import { mentionExtension, type MItem } from "../lib/mention";
 import { typeMeta } from "../lib/entryTypes";
@@ -102,12 +103,19 @@ export function EntryDrawer({ entryId, projectId, onClose }: { entryId: string; 
     }
   }
 
+  async function remove() {
+    if (!confirm(`Excluir a ficha "${title}"? Isso remove o card do quadro, as relações e menções dela. Não dá pra desfazer.`)) return;
+    await api.del(`/entries/${entryId}`);
+    onClose();
+  }
+
   return (
     <>
     <div className="drawer-panel" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "min(440px, 100%)", zIndex: 20, background: "var(--panel)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", boxShadow: "-8px 0 24px rgba(20,24,40,.12)" }}>
       <div className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
         {entry && <EntryIcon type={entry.type} size={22} color={typeMeta(entry.type).color} />}
         <span className="muted grow" style={{ fontSize: 12 }}>{entry ? typeMeta(entry.type).label : ""} · {title}</span>
+        <button onClick={remove} title="excluir ficha" style={{ padding: "4px 7px", color: "var(--danger)" }}><IconTrash size={16} /></button>
         <button onClick={onClose}>fechar</button>
       </div>
 
