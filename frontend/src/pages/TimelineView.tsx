@@ -2,14 +2,15 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../lib/api";
 import { typeMeta } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
+import { useIsMobile } from "../lib/useIsMobile";
 import { EntryDrawer } from "./EntryDrawer";
 import type { Entry } from "../lib/types";
 
 interface TEvent { id: string; title: string; startValue: number; color: string | null; entryId: string | null; }
 
-const LABEL_W = 168;
-
 export function TimelineView({ projectId }: { projectId: string }) {
+  const mobile = useIsMobile();
+  const LABEL_W = mobile ? 104 : 168;
   const [events, setEvents] = useState<TEvent[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [flagged, setFlagged] = useState<Set<string>>(new Set()); // títulos em contradição (IA)
@@ -64,18 +65,21 @@ export function TimelineView({ projectId }: { projectId: string }) {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <form className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }} onSubmit={add}>
-        <input placeholder="Evento (ex.: Batalha de Vharn)" value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: 220 }} />
-        <input placeholder="Ano" value={year} onChange={(e) => setYear(e.target.value)} style={{ width: 90 }} inputMode="numeric" />
+      <form className="row" style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 8 }} onSubmit={add}>
+        <input placeholder="Evento (ex.: Batalha de Vharn)" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: mobile ? "1 1 100%" : "0 0 220px", width: mobile ? "100%" : 220 }} />
+        <input placeholder="Ano" value={year} onChange={(e) => setYear(e.target.value)} style={{ width: mobile ? 80 : 90 }} inputMode="numeric" />
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} title="cor" style={{ width: 42, padding: 2 }} />
-        <select value={entryId} onChange={(e) => setEntryId(e.target.value)} style={{ width: 200 }}>
+        <select value={entryId} onChange={(e) => setEntryId(e.target.value)} style={{ flex: mobile ? 1 : "0 0 200px", width: mobile ? undefined : 200 }}>
           <option value="">— trilha geral —</option>
           {entries.map((en) => <option key={en.id} value={en.id}>{typeMeta(en.type).icon} {en.title}</option>)}
         </select>
-        <button className="primary">+ Evento</button>
+        <button className="primary" style={mobile ? { flex: "1 1 100%" } : undefined}>+ Evento</button>
       </form>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "1rem" }}>
+      {mobile && events.length > 0 && (
+        <div className="muted" style={{ fontSize: 12, padding: "6px 12px 0", display: "flex", alignItems: "center", gap: 6 }}>← deslize para percorrer os anos →</div>
+      )}
+      <div style={{ flex: 1, overflow: "auto", padding: mobile ? "0.5rem" : "1rem", WebkitOverflowScrolling: "touch" }}>
         {events.length === 0 ? (
           <p className="muted">Sem eventos. Adicione o primeiro (título + ano + trilha).</p>
         ) : (

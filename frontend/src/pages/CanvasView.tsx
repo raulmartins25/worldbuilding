@@ -652,6 +652,8 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
             onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
             onInit={setRfi}
             elevateNodesOnSelect={false}
+            zoomOnDoubleClick={!mobile}
+            minZoom={0.2}
             fitView
           >
             <Background color={canvasDot(theme)} gap={22} />
@@ -670,6 +672,7 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
             <ReactFlow
               nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes}
               onNodesChange={onGNodesChange} onEdgesChange={onGEdgesChange}
+              zoomOnDoubleClick={!mobile}
               fitView minZoom={0.1}
             >
               <Background color={canvasDot(theme)} gap={22} />
