@@ -432,28 +432,45 @@ export async function aiRoutes(app: FastifyInstance) {
       } catch { /* ignora doc que a IA não devolveu JSON */ }
     }
     if (perDoc.length === 0) throw httpError(422, "no_entities_extracted");
-
-    // 3) FUNDE fichas de mesmo nome entre documentos (Kael em vários docs → 1 ficha somando tudo)
-    interface Merged { type: string; title: string; summaries: string[]; metadata: Record<string, unknown>; details: string[]; }
     const norm = (s: string) => s.trim().toLowerCase();
-    const mergedByKey = new Map<string, Merged>();
-    for (const e of perDoc) {
-      const key = norm(e.title);
-      const cur = mergedByKey.get(key);
-      if (cur) {
-        if (e.summary) cur.summaries.push(String(e.summary));
-        if (e.details) cur.details.push(String(e.details));
-        for (const [k, v] of Object.entries(e.metadata ?? {})) if (v != null && String(v).trim() && !cur.metadata[k]) cur.metadata[k] = v;
-      } else {
-        mergedByKey.set(key, {
-          type: e.type, title: e.title.trim(),
-          summaries: e.summary ? [String(e.summary)] : [],
-          metadata: Object.fromEntries(Object.entries(e.metadata ?? {}).filter(([, v]) => v != null && String(v).trim())),
-          details: e.details ? [String(e.details)] : [],
-        });
-      }
-    }
-    const mergedList = [...mergedByKey.values()].slice(0, 80);
+
+    // 2.5) CANONICALIZAÇÃO — a IA agrupa variações de nome do MESMO item entre documentos
+    interface Group { canonicalTitle: string; type: string; indices: number[]; }
+    let groups: Group[] = [];
+    try {
+      const idxList = perDoc.map((e, i) => `${i}. [${e.type}] ${e.title}${e.summary ? ` — ${String(e.summary).slice(0, 70)}` : ""}`).join("\n");
+      const dedupRaw = await chat([
+        {
+          role: "system",
+          content:
+            "Fichas extraídas de documentos diferentes podem ser a MESMA entidade com nomes variados " +
+            "(ex.: 'Kael', 'KAEL VALTHOR' e 'Kael Fragmentos' são a MESMA pessoa; 'Fragmentos', 'Os Fragmentos' e 'Sistema Mágico' são o MESMO sistema). " +
+            "Agrupe os ÍNDICES que se referem à mesma ficha e dê um título CANÔNICO (o nome mais completo e correto) e o tipo mais adequado. " +
+            'Responda SOMENTE JSON: {"groups":[{"canonicalTitle","type","indices":[números]}]}. Todo índice deve aparecer em EXATAMENTE um grupo. Em português.',
+        },
+        { role: "user", content: idxList },
+      ], { json: true, temperature: 0.1 });
+      groups = ((JSON.parse(dedupRaw).groups ?? []) as Group[]).filter((g) => g?.canonicalTitle && g?.type && Array.isArray(g.indices));
+    } catch { groups = []; }
+    // garante cobertura: cada índice em exatamente um grupo (fallback = grupo próprio)
+    const seen = new Set<number>();
+    for (const g of groups) g.indices = g.indices.filter((i) => Number.isInteger(i) && i >= 0 && i < perDoc.length && !seen.has(i) && (seen.add(i), true));
+    groups = groups.filter((g) => g.indices.length > 0);
+    for (let i = 0; i < perDoc.length; i++) if (!seen.has(i)) { groups.push({ canonicalTitle: perDoc[i].title, type: perDoc[i].type, indices: [i] }); seen.add(i); }
+
+    // 3) monta as fichas consolidadas a partir dos grupos (soma summaries/metadata/details)
+    interface Merged { type: string; title: string; summaries: string[]; metadata: Record<string, unknown>; details: string[]; }
+    const mergedList: Merged[] = groups.slice(0, 90).map((g) => {
+      const items = g.indices.map((i) => perDoc[i]);
+      const metadata: Record<string, unknown> = {};
+      for (const it of items) for (const [k, v] of Object.entries(it.metadata ?? {})) if (v != null && String(v).trim() && !metadata[k]) metadata[k] = v;
+      return {
+        type: (allowed as string[]).includes(g.type) ? g.type : items[0].type, title: g.canonicalTitle.trim(),
+        summaries: items.map((it) => it.summary).filter((s): s is string => !!s).map(String),
+        metadata,
+        details: items.map((it) => it.details).filter((s): s is string => !!s).map(String),
+      };
+    });
 
     // 4) board + fichas existentes
     let [board] = await db.select().from(boards).where(eq(boards.projectId, pid)).limit(1);
