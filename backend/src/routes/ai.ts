@@ -453,29 +453,46 @@ export async function aiRoutes(app: FastifyInstance) {
     if (perDoc.length === 0) throw httpError(422, "no_entities_extracted");
     const norm = (s: string) => s.trim().toLowerCase();
 
-    // 2.5) CANONICALIZAÇÃO — a IA agrupa variações de nome do MESMO item entre documentos
+    // 2.5) CANONICALIZAÇÃO POR TIPO — funde variações do MESMO nome, nunca entidades/tipos diferentes
     interface Group { canonicalTitle: string; type: string; indices: number[]; }
-    let groups: Group[] = [];
-    try {
-      const idxList = perDoc.map((e, i) => `${i}. [${e.type}] ${e.title}${e.summary ? ` — ${String(e.summary).slice(0, 70)}` : ""}`).join("\n");
-      const dedupRaw = await chat([
-        {
-          role: "system",
-          content:
-            "Fichas extraídas de documentos diferentes podem ser a MESMA entidade com nomes variados " +
-            "(ex.: 'Kael', 'KAEL VALTHOR' e 'Kael Fragmentos' são a MESMA pessoa; 'Fragmentos', 'Os Fragmentos' e 'Sistema Mágico' são o MESMO sistema). " +
-            "Agrupe os ÍNDICES que se referem à mesma ficha e dê um título CANÔNICO (o nome mais completo e correto) e o tipo mais adequado. " +
-            'Responda SOMENTE JSON: {"groups":[{"canonicalTitle","type","indices":[números]}]}. Todo índice deve aparecer em EXATAMENTE um grupo. Em português.',
-        },
-        { role: "user", content: idxList },
-      ], { json: true, temperature: 0.1 });
-      groups = ((JSON.parse(dedupRaw).groups ?? []) as Group[]).filter((g) => g?.canonicalTitle && g?.type && Array.isArray(g.indices));
-    } catch { groups = []; }
-    // garante cobertura: cada índice em exatamente um grupo (fallback = grupo próprio)
-    const seen = new Set<number>();
-    for (const g of groups) g.indices = g.indices.filter((i) => Number.isInteger(i) && i >= 0 && i < perDoc.length && !seen.has(i) && (seen.add(i), true));
-    groups = groups.filter((g) => g.indices.length > 0);
-    for (let i = 0; i < perDoc.length; i++) if (!seen.has(i)) { groups.push({ canonicalTitle: perDoc[i].title, type: perDoc[i].type, indices: [i] }); seen.add(i); }
+    const byType = new Map<string, number[]>();
+    perDoc.forEach((e, i) => { const a = byType.get(e.type) ?? []; a.push(i); byType.set(e.type, a); });
+    const groups: Group[] = [];
+    for (const [t, idxs] of byType) {
+      if (idxs.length === 1) { groups.push({ canonicalTitle: perDoc[idxs[0]].title, type: t, indices: [idxs[0]] }); continue; }
+      let sub: Group[] = [];
+      try {
+        const list = idxs.map((gi, k) => `${k}. ${perDoc[gi].title}${perDoc[gi].summary ? ` — ${String(perDoc[gi].summary).slice(0, 60)}` : ""}`).join("\n");
+        const raw = await chat([
+          {
+            role: "system",
+            content:
+              `Abaixo há fichas do MESMO tipo ("${t}") extraídas de documentos diferentes. Algumas podem ser a MESMA entidade com o ` +
+              "nome escrito de formas variadas (ex.: 'Kael', 'KAEL VALTHOR' e 'Kael Fragmentos' são a MESMA pessoa). " +
+              "Agrupe SOMENTE quando for CLARAMENTE a mesma entidade — NA DÚVIDA, DEIXE SEPARADO. " +
+              "Entidades diferentes (capítulos diferentes, pessoas diferentes) NUNCA devem ser agrupadas. " +
+              'Responda SOMENTE JSON: {"groups":[{"canonicalTitle","indices":[números]}]}. Todo índice em EXATAMENTE um grupo.',
+          },
+          { role: "user", content: list },
+        ], { json: true, temperature: 0.1 });
+        const gs = (JSON.parse(raw).groups ?? []) as { canonicalTitle?: string; indices?: number[] }[];
+        const seenLocal = new Set<number>();
+        for (const g of gs) {
+          const local = (g.indices ?? []).filter((k) => Number.isInteger(k) && k >= 0 && k < idxs.length && !seenLocal.has(k) && (seenLocal.add(k), true));
+          if (local.length === 0 || !g.canonicalTitle) continue;
+          sub.push({ canonicalTitle: String(g.canonicalTitle), type: t, indices: local.map((k) => idxs[k]) });
+        }
+        for (let k = 0; k < idxs.length; k++) if (!seenLocal.has(k)) sub.push({ canonicalTitle: perDoc[idxs[k]].title, type: t, indices: [idxs[k]] });
+        // trava anti-superfusão: se um grupo engoliu mais da metade, a canonicalização errou → descarta
+        if (sub.some((g) => g.indices.length > Math.max(3, idxs.length / 2))) sub = [];
+      } catch { sub = []; }
+      if (sub.length === 0) { // fallback seguro: funde só por título idêntico
+        const m = new Map<string, number[]>();
+        for (const gi of idxs) { const k = norm(perDoc[gi].title); const a = m.get(k) ?? []; a.push(gi); m.set(k, a); }
+        for (const [, arr] of m) sub.push({ canonicalTitle: perDoc[arr[0]].title, type: t, indices: arr });
+      }
+      groups.push(...sub);
+    }
 
     // 3) monta as fichas consolidadas a partir dos grupos (soma summaries/metadata/details)
     interface Merged { type: string; title: string; summaries: string[]; metadata: Record<string, unknown>; details: string[]; verbatim: string[]; }
