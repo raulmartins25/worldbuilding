@@ -290,25 +290,30 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post("/projects/:pid/wizard/options", async (req) => {
     const { pid } = req.params as { pid: string };
     await requireProject(req.user.sub, pid);
-    const { question, answers, exclude } = z.object({
+    const { question, answers, exclude, seed } = z.object({
       question: z.string().min(1),
       answers: z.record(z.string()).default({}),
       exclude: z.array(z.string()).default([]),
+      seed: z.string().optional(),
     }).parse(req.body);
     const { text: world } = await buildProjectContext(pid);
     const ans = Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join("\n") || "(nada ainda)";
     const excludeTxt = exclude.length
       ? `\n\nO autor NÃO gostou destas opções já mostradas — traga ideias REALMENTE DIFERENTES (outro ângulo, outro tom), não variações delas:\n- ${exclude.join("\n- ")}`
       : "";
+    const seedTxt = seed?.trim()
+      ? `\n\nIDEIA DO AUTOR (é o ponto de partida do mundo — TODAS as opções devem explorar e APROFUNDAR esta ideia, nunca contrariá-la):\n${seed.trim().slice(0, 2000)}`
+      : "";
     const raw = await chat([
       {
         role: "system",
         content:
           "Você conduz uma entrevista de worldbuilding. Para a PERGUNTA dada, ofereça 5 opções CURTAS (uma frase cada), " +
-          "distintas e evocativas, COERENTES com o mundo já criado (CONTEXTO) e com as respostas anteriores. " +
+          "distintas e evocativas, COERENTES com o mundo já criado (CONTEXTO), com a IDEIA DO AUTOR (quando houver) e com " +
+          "as respostas anteriores. Quando houver ideia do autor, cada opção deve DESDOBRAR essa ideia em uma direção concreta. " +
           'Responda SOMENTE JSON: {"options":[5 strings]}. Em português.',
       },
-      { role: "user", content: `CONTEXTO DO MUNDO:\n${world.slice(0, 4000)}\n\nRESPOSTAS ATÉ AGORA:\n${ans}\n\nPERGUNTA: ${question}` },
+      { role: "user", content: `CONTEXTO DO MUNDO:\n${world.slice(0, 4000)}${seedTxt}\n\nRESPOSTAS ATÉ AGORA:\n${ans}${excludeTxt}\n\nPERGUNTA: ${question}` },
     ], { json: true, temperature: 0.9 });
     let out: { options?: string[] } = {};
     try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
@@ -319,13 +324,15 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post("/projects/:pid/wizard/commit", async (req) => {
     const { pid } = req.params as { pid: string };
     await requireProject(req.user.sub, pid);
-    const { type, importance, answers } = z.object({
+    const { type, importance, answers, seed } = z.object({
       type: z.enum(ENTRY_TYPES),
       importance: z.number().int().min(0).max(5).optional(),
       answers: z.record(z.string()).default({}),
+      seed: z.string().optional(),
     }).parse(req.body);
     const { text: world } = await buildProjectContext(pid);
     const ans = Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join("\n") || "(sem respostas)";
+    const seedTxt = seed?.trim() ? `\n\nIDEIA ORIGINAL DO AUTOR (respeite e desenvolva):\n${seed.trim().slice(0, 2000)}` : "";
     const raw = await chat([
       {
         role: "system",
@@ -337,7 +344,7 @@ export async function aiRoutes(app: FastifyInstance) {
           `'relationships' = conexões com fichas JÁ EXISTENTES (target = título EXATO de uma ficha do CONTEXTO; type = ${REL_VOCAB.join(", ")}). ` +
           "NUNCA relacione com fichas que não estão no contexto. Em português.",
       },
-      { role: "user", content: `CONTEXTO (fichas existentes):\n${world.slice(0, 6000)}\n\nRESPOSTAS:\n${ans}` },
+      { role: "user", content: `CONTEXTO (fichas existentes):\n${world.slice(0, 6000)}${seedTxt}\n\nRESPOSTAS:\n${ans}` },
     ], { json: true, temperature: 0.5 });
     let out: { title?: string; summary?: string; metadata?: Record<string, unknown>; relationships?: { target?: string; type?: string }[] } = {};
     try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }

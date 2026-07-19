@@ -97,7 +97,9 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
   const [options, setOptions] = useState<string[]>([]);
   const [loadingOpts, setLoadingOpts] = useState(false);
   const [custom, setCustom] = useState("");
-  const [phase, setPhase] = useState<"asking" | "committing" | "sectionDone" | "finished">("asking");
+  const [phase, setPhase] = useState<"start" | "asking" | "committing" | "sectionDone" | "finished">("start");
+  const [seed, setSeed] = useState("");        // ideia do autor (norteia toda a entrevista)
+  const [seedDraft, setSeedDraft] = useState("");
   const [created, setCreated] = useState<CreatedCard[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedOpts, setSelectedOpts] = useState<Set<number>>(new Set());
@@ -108,9 +110,11 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
   // refs para a busca de opções não re-disparar em loop, e cache por pergunta (voltar não recarrega)
   const answersRef = useRef(answers);
   const optionsRef = useRef(options);
+  const seedRef = useRef(seed);
   const cacheRef = useRef<Record<string, string[]>>({});
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { optionsRef.current = options; }, [options]);
+  useEffect(() => { seedRef.current = seed; }, [seed]);
 
   const loadOptions = useCallback(async (force: boolean) => {
     const q = SECTIONS[si]?.questions[qi];
@@ -120,7 +124,7 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
     const exclude = force ? [...optionsRef.current] : []; // ao atualizar, pede opções diferentes das mostradas
     setLoadingOpts(true); setError(null); setOptions([]); setSelectedOpts(new Set());
     try {
-      const r = await api.post<{ options: string[] }>(`/projects/${projectId}/wizard/options`, { question: q.q, answers: answersRef.current, exclude });
+      const r = await api.post<{ options: string[] }>(`/projects/${projectId}/wizard/options`, { question: q.q, answers: answersRef.current, exclude, seed: seedRef.current });
       const opts = r.options ?? [];
       cacheRef.current[key] = opts;
       setOptions(opts);
@@ -134,7 +138,7 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
     try {
       const r = await api.post<CreatedCard & { entry: { title: string; type: string } }>(
         `/projects/${projectId}/wizard/commit`,
-        { type: section.type, importance: section.importance, answers: finalAnswers },
+        { type: section.type, importance: section.importance, answers: finalAnswers, seed },
       );
       setCreated((c) => [...c, { title: r.entry.title, type: r.entry.type, connections: r.connections ?? [] }]);
       if (section.repeatable) setPhase("sectionDone");
@@ -198,9 +202,44 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
         </div>
 
         <div style={{ padding: 16, overflow: "auto", flex: 1 }}>
-          {phase !== "finished" && (
-            <div className="muted" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 10 }}>
-              Etapa {si + 1}/{totalSteps} · {section.title}
+          {phase !== "finished" && phase !== "start" && (
+            <>
+              <div className="muted" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: seed ? 4 : 10 }}>
+                Etapa {si + 1}/{totalSteps} · {section.title}
+              </div>
+              {seed && (
+                <div className="muted" style={{ fontSize: 12, marginBottom: 10, paddingLeft: 8, borderLeft: "3px solid var(--accent)" }}>
+                  Sua ideia: <em>{seed.length > 120 ? seed.slice(0, 120) + "…" : seed}</em>
+                </div>
+              )}
+            </>
+          )}
+
+          {phase === "start" && (
+            <div className="stack" style={{ gap: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 500 }}>Como você quer começar?</div>
+
+              <button onClick={() => { setSeed(""); setPhase("asking"); }}
+                style={{ textAlign: "left", padding: "14px 16px", borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--panel)" }}>
+                <div style={{ fontWeight: 500, marginBottom: 3 }}>Começar do zero</div>
+                <div className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>
+                  A IA propõe caminhos a cada pergunta e você escolhe. Bom para descobrir o mundo enquanto responde.
+                </div>
+              </button>
+
+              <div className="card" style={{ borderColor: "var(--accent)", background: "color-mix(in srgb, var(--accent) 6%, var(--panel))" }}>
+                <div style={{ fontWeight: 500, marginBottom: 3 }}>Já tenho uma ideia</div>
+                <div className="muted" style={{ fontSize: 13, lineHeight: 1.45, marginBottom: 8 }}>
+                  Escreva sua ideia e a entrevista vai <strong>explorar e aprofundar</strong> ela — todas as opções partem dela.
+                </div>
+                <textarea value={seedDraft} onChange={(e) => setSeedDraft(e.target.value)} rows={4}
+                  placeholder="Ex.: um reino sobre ilhas flutuantes onde a magia vem das memórias dos mortos, e quem lembra demais desaparece…"
+                  style={{ width: "100%", resize: "vertical" }} />
+                <button className="primary" onClick={() => { setSeed(seedDraft.trim()); setPhase("asking"); }} disabled={!seedDraft.trim()}
+                  style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  Começar com essa ideia <IconArrowRight size={15} />
+                </button>
+              </div>
             </div>
           )}
 
