@@ -402,7 +402,6 @@ export async function aiRoutes(app: FastifyInstance) {
     }
     if (docs.length === 0) throw httpError(422, "no_text_extracted");
 
-    const corpus = docs.map((d) => `### DOCUMENTO: ${d.name}\n${d.full.slice(0, 9000)}`).join("\n\n").slice(0, 42000);
     const allowed = types.map((t) => t.type);
     const tplHint = types.map((t) => {
       const keys = t.fields.map((f) => `${f.key}(${f.label})${f.options?.length ? `[${f.options.join("/")}]` : ""}`).join(", ") || "sem campos";
@@ -410,63 +409,73 @@ export async function aiRoutes(app: FastifyInstance) {
     }).join("\n");
     const { text: world } = await buildProjectContext(pid);
 
-    // 2) a IA lê o corpus inteiro e devolve fichas + relações
-    const raw = await chat([
-      {
-        role: "system",
-        content:
-          "Você é um construtor de mundos. Recebe VÁRIOS DOCUMENTOS (um corpus) e monta a bíblia de um mundo de fantasia. " +
-          "Muitos documentos são COMPLEMENTARES — partes do mesmo conceito espalhadas em arquivos diferentes (ex.: 'Sistema de Magia' " +
-          "e 'Níveis de Magia'). MESCLE numa ficha só quando descreverem a MESMA coisa; crie fichas DISTINTAS ligadas por relação " +
-          "quando forem conceitos relacionados mas diferentes. Use SOMENTE os TIPOS permitidos. Preencha os campos do template de " +
-          "cada tipo SOMENTE com o que os documentos dizem (não invente; deixe vazio o não coberto). " +
-          "Identifique também as RELAÇÕES entre as fichas (e com as fichas já existentes no CONTEXTO). " +
-          'Responda SOMENTE JSON: {"entities":[{"type","title","summary","sourceDoc","metadata":{<campos>}}],' +
-          '"relationships":[{"source","target","type","reason"}]}. ' +
-          `Tipos de relação válidos: ${REL_VOCAB.join(", ")} (use "contem" para hierarquia/contenção, ex.: um sistema CONTÉM seus níveis). ` +
-          "'source'/'target' = títulos EXATOS de fichas (novas ou do contexto). 'sourceDoc' = nome do documento de origem (ou null). " +
-          "Máx 60 fichas. Em português.\n\nTIPOS PERMITIDOS E CAMPOS:\n" + tplHint + "\n\nCONTEXTO (fichas já existentes):\n" + world.slice(0, 4000),
-      },
-      { role: "user", content: corpus },
-    ], { json: true, temperature: 0.35 });
+    // 2) EXTRAÇÃO POR DOCUMENTO — uma chamada por doc, sem truncar (foco e fidelidade)
+    type Ext = { type: string; title: string; summary?: string; metadata?: Record<string, unknown>; details?: string };
+    const perDoc: Ext[] = [];
+    for (const d of docs) {
+      const raw = await chat([
+        {
+          role: "system",
+          content:
+            "Você extrai fichas de um mundo de fantasia a partir de UM documento. Encontre TODAS as fichas dos TIPOS permitidos " +
+            "descritas nele — seja EXAUSTIVO e FIEL: NÃO invente, NÃO resuma demais e NÃO omita personagens/elementos citados. " +
+            'Responda SOMENTE JSON: {"entities":[{"type","title","summary","metadata":{<campos do template>},"details"}]}. ' +
+            "'summary' = UMA frase; 'metadata' = os campos do template preenchidos com o que o doc diz; " +
+            "'details' = descrição RICA e fiel reunindo as informações relevantes daquela ficha no documento (até ~1600 caracteres). " +
+            "Use SOMENTE os tipos permitidos. Em português.\n\nTIPOS PERMITIDOS E CAMPOS:\n" + tplHint,
+        },
+        { role: "user", content: `DOCUMENTO "${d.name}":\n\n${d.full.slice(0, 55000)}` },
+      ], { json: true, temperature: 0.2 });
+      try {
+        const p = JSON.parse(raw) as { entities?: Ext[] };
+        for (const e of p.entities ?? []) if (e?.title && e?.type && (allowed as string[]).includes(e.type)) perDoc.push(e);
+      } catch { /* ignora doc que a IA não devolveu JSON */ }
+    }
+    if (perDoc.length === 0) throw httpError(422, "no_entities_extracted");
 
-    let parsed: {
-      entities?: { type?: string; title?: string; summary?: string; sourceDoc?: string; metadata?: Record<string, unknown> }[];
-      relationships?: { source?: string; target?: string; type?: string; reason?: string }[];
-    } = {};
-    try { parsed = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
-    const aiEntities = (parsed.entities ?? []).filter((e) => e?.title && e?.type && (allowed as string[]).includes(e.type as string)).slice(0, 60);
-    const aiRels = (parsed.relationships ?? []).filter((r) => r?.source && r?.target && REL_VOCAB.includes(r.type as string));
+    // 3) FUNDE fichas de mesmo nome entre documentos (Kael em vários docs → 1 ficha somando tudo)
+    interface Merged { type: string; title: string; summaries: string[]; metadata: Record<string, unknown>; details: string[]; }
+    const norm = (s: string) => s.trim().toLowerCase();
+    const mergedByKey = new Map<string, Merged>();
+    for (const e of perDoc) {
+      const key = norm(e.title);
+      const cur = mergedByKey.get(key);
+      if (cur) {
+        if (e.summary) cur.summaries.push(String(e.summary));
+        if (e.details) cur.details.push(String(e.details));
+        for (const [k, v] of Object.entries(e.metadata ?? {})) if (v != null && String(v).trim() && !cur.metadata[k]) cur.metadata[k] = v;
+      } else {
+        mergedByKey.set(key, {
+          type: e.type, title: e.title.trim(),
+          summaries: e.summary ? [String(e.summary)] : [],
+          metadata: Object.fromEntries(Object.entries(e.metadata ?? {}).filter(([, v]) => v != null && String(v).trim())),
+          details: e.details ? [String(e.details)] : [],
+        });
+      }
+    }
+    const mergedList = [...mergedByKey.values()].slice(0, 80);
 
-    // 3) board padrão do projeto
+    // 4) board + fichas existentes
     let [board] = await db.select().from(boards).where(eq(boards.projectId, pid)).limit(1);
     if (!board) [board] = await db.insert(boards).values({ projectId: pid, name: "Main" }).returning();
-
-    // fichas já existentes (dedup por título) + nodes existentes
     const existingEntries = await db.select({ id: entries.id, title: entries.title }).from(entries).where(eq(entries.projectId, pid));
-    const entryByTitle = new Map(existingEntries.map((e) => [e.title.trim().toLowerCase(), e.id]));
+    const entryByTitle = new Map(existingEntries.map((e) => [norm(e.title), e.id]));
     const existingNodes = await db.select().from(boardNodes).where(eq(boardNodes.boardId, board.id));
     const nodeByEntry = new Map(existingNodes.filter((n) => n.entryId).map((n) => [n.entryId as string, n.id]));
-
-    const fullByDoc = new Map(docs.map((d) => [d.name, d.full]));
-    let createdCards = 0;
-    const gridStart = existingNodes.length; // posiciona os novos abaixo do que já existe
-    let gi = 0;
+    const entryIdByTitle = new Map<string, string>(entryByTitle);
     const nodeIdByTitle = new Map<string, string>();
-    const entryIdByTitle = new Map<string, string>();
-    for (const [t, id] of entryByTitle) entryIdByTitle.set(t, id);
+    const gridStart = existingNodes.length;
+    let gi = 0, createdCards = 0;
 
-    for (const e of aiEntities) {
-      const key = (e.title as string).trim().toLowerCase();
+    for (const m of mergedList) {
+      const key = norm(m.title);
       let entryId = entryByTitle.get(key);
       if (!entryId) {
-        const metadata: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(e.metadata ?? {})) if (v != null && String(v).trim()) metadata[k] = v;
-        const body = e.sourceDoc && MANUSCRIPT_TYPES.has(e.type as string) && fullByDoc.get(e.sourceDoc)
-          ? textToDoc(fullByDoc.get(e.sourceDoc)!) : {};
+        const detailText = m.details.join("\n\n").slice(0, 14000);
         const [entry] = await db.insert(entries).values({
-          userId: req.user.sub, projectId: pid, type: e.type as EntryTypeName, title: (e.title as string).trim(),
-          summary: e.summary ? String(e.summary) : null, metadata, body,
+          userId: req.user.sub, projectId: pid, type: m.type as EntryTypeName, title: m.title,
+          summary: m.summaries[0] ?? null, metadata: m.metadata,
+          body: detailText ? textToDoc(detailText) : {}, // texto-fonte guardado na ficha (fica indexado)
         }).returning();
         entryId = entry.id;
         entryByTitle.set(key, entryId);
@@ -474,27 +483,38 @@ export async function aiRoutes(app: FastifyInstance) {
         createdCards++;
       }
       entryIdByTitle.set(key, entryId);
-      // garante um node no board
       let nodeId = nodeByEntry.get(entryId);
       if (!nodeId) {
         const col = (gridStart + gi) % 5, row = Math.floor((gridStart + gi) / 5);
-        const [n] = await db.insert(boardNodes).values({
-          projectId: pid, boardId: board.id, entryId, kind: "card", x: 60 + col * 220, y: 60 + row * 130,
-        }).returning();
+        const [n] = await db.insert(boardNodes).values({ projectId: pid, boardId: board.id, entryId, kind: "card", x: 60 + col * 240, y: 60 + row * 150 }).returning();
         nodeId = n.id; nodeByEntry.set(entryId, nodeId); gi++;
       }
       nodeIdByTitle.set(key, nodeId);
     }
 
-    // 4) cria as relações entre as fichas
+    // 5) PASSE DE RELAÇÕES sobre a lista consolidada
     let createdRels = 0;
-    for (const r of aiRels) {
-      const sk = (r.source as string).trim().toLowerCase(), tk = (r.target as string).trim().toLowerCase();
+    const entList = mergedList.map((m) => `- [${m.type}] ${m.title}: ${(m.summaries[0] ?? "").slice(0, 120)}`).join("\n");
+    const relRaw = await chat([
+      {
+        role: "system",
+        content:
+          "Dada a LISTA de fichas de um mundo de fantasia, identifique as RELAÇÕES entre elas (e com as fichas já existentes). " +
+          'Responda SOMENTE JSON: {"relationships":[{"source","target","type"}]}. ' +
+          `'type' ∈ ${REL_VOCAB.join(", ")} (contem = hierarquia/contenção). 'source'/'target' = títulos EXATOS da lista. ` +
+          "Seja generoso nas relações plausíveis (família, aliados, inimigos, mentor/aprendiz, pertence a facção/sistema, governa, aparece em local). Em português.",
+      },
+      { role: "user", content: `FICHAS:\n${entList}\n\nFICHAS JÁ EXISTENTES NO MUNDO:\n${world.slice(0, 3000)}` },
+    ], { json: true, temperature: 0.4 });
+    let rels: { source?: string; target?: string; type?: string }[] = [];
+    try { rels = (JSON.parse(relRaw).relationships ?? []) as typeof rels; } catch { rels = []; }
+    for (const r of rels) {
+      if (!r?.source || !r?.target || !REL_VOCAB.includes(r.type as string)) continue;
+      const sk = norm(r.source), tk = norm(r.target);
       const sEntry = entryIdByTitle.get(sk), tEntry = entryIdByTitle.get(tk);
       if (!sEntry || !tEntry || sEntry === tEntry) continue;
       if (r.type === "contem") {
-        try { await db.insert(memberships).values({ projectId: pid, containerId: sEntry, memberId: tEntry }); createdRels++; }
-        catch { /* membership já existe */ }
+        try { await db.insert(memberships).values({ projectId: pid, containerId: sEntry, memberId: tEntry }); createdRels++; } catch { /* ok */ }
         continue;
       }
       await db.insert(relationships).values({ projectId: pid, sourceId: sEntry, targetId: tEntry, type: r.type as string });
@@ -503,7 +523,7 @@ export async function aiRoutes(app: FastifyInstance) {
       createdRels++;
     }
 
-    return { cards: createdCards, relationships: createdRels, entities: aiEntities.map((e) => ({ type: e.type, title: e.title })), docs: docs.map((d) => d.name) };
+    return { cards: createdCards, relationships: createdRels, entities: mergedList.map((m) => ({ type: m.type, title: m.title })), docs: docs.map((d) => d.name) };
   });
 
   // "deixar a IA rascunhar": preenche o template do tipo respeitando magia/clima/tom do mundo

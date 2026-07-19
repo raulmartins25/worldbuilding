@@ -119,7 +119,7 @@ export function BatchImportModal({ projectId, projectName, onClose, onDone }: {
               </div>
 
               {error && <div style={{ color: "var(--danger)", marginTop: 12 }}>{error}</div>}
-              {busy && <div className="muted" style={{ marginTop: 12, fontSize: 13 }}>Lendo os documentos e conectando as fichas… isso pode levar 1–2 minutos.</div>}
+              {busy && <div className="muted" style={{ marginTop: 12, fontSize: 13 }}>Lendo cada documento a fundo e conectando as fichas… bases grandes podem levar alguns minutos — pode deixar rodando.</div>}
             </>
           )}
         </div>
