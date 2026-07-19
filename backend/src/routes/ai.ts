@@ -286,6 +286,100 @@ export async function aiRoutes(app: FastifyInstance) {
     return { entities, text, words: text.split(/\s+/).filter(Boolean).length };
   });
 
+  // ASSISTENTE DE MUNDO — gera 5 opções contextuais para a pergunta atual da entrevista
+  app.post("/projects/:pid/wizard/options", async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { question, answers } = z.object({
+      question: z.string().min(1),
+      answers: z.record(z.string()).default({}),
+    }).parse(req.body);
+    const { text: world } = await buildProjectContext(pid);
+    const ans = Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join("\n") || "(nada ainda)";
+    const raw = await chat([
+      {
+        role: "system",
+        content:
+          "Você conduz uma entrevista de worldbuilding. Para a PERGUNTA dada, ofereça 5 opções CURTAS (uma frase cada), " +
+          "distintas e evocativas, COERENTES com o mundo já criado (CONTEXTO) e com as respostas anteriores. " +
+          'Responda SOMENTE JSON: {"options":[5 strings]}. Em português.',
+      },
+      { role: "user", content: `CONTEXTO DO MUNDO:\n${world.slice(0, 4000)}\n\nRESPOSTAS ATÉ AGORA:\n${ans}\n\nPERGUNTA: ${question}` },
+    ], { json: true, temperature: 0.9 });
+    let out: { options?: string[] } = {};
+    try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    return { options: (out.options ?? []).filter((o) => typeof o === "string" && o.trim()).slice(0, 5) };
+  });
+
+  // ASSISTENTE DE MUNDO — consolida as respostas de uma etapa em uma ficha + conexões
+  app.post("/projects/:pid/wizard/commit", async (req) => {
+    const { pid } = req.params as { pid: string };
+    await requireProject(req.user.sub, pid);
+    const { type, importance, answers } = z.object({
+      type: z.enum(ENTRY_TYPES),
+      importance: z.number().int().min(0).max(5).optional(),
+      answers: z.record(z.string()).default({}),
+    }).parse(req.body);
+    const { text: world } = await buildProjectContext(pid);
+    const ans = Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join("\n") || "(sem respostas)";
+    const raw = await chat([
+      {
+        role: "system",
+        content:
+          `Você monta uma ficha da bíblia de um mundo de fantasia a partir das RESPOSTAS de uma entrevista. Tipo da ficha: "${type}". ` +
+          'Responda SOMENTE JSON: {"title","summary","metadata":{<campos>},"relationships":[{"target","type","reason"}]}. ' +
+          "'title' = nome curto e específico (use o nome dado nas respostas, se houver); 'summary' = UMA frase; " +
+          "'metadata' = organize as informações das respostas em campos coerentes; " +
+          `'relationships' = conexões com fichas JÁ EXISTENTES (target = título EXATO de uma ficha do CONTEXTO; type = ${REL_VOCAB.join(", ")}). ` +
+          "NUNCA relacione com fichas que não estão no contexto. Em português.",
+      },
+      { role: "user", content: `CONTEXTO (fichas existentes):\n${world.slice(0, 6000)}\n\nRESPOSTAS:\n${ans}` },
+    ], { json: true, temperature: 0.5 });
+    let out: { title?: string; summary?: string; metadata?: Record<string, unknown>; relationships?: { target?: string; type?: string }[] } = {};
+    try { out = JSON.parse(raw); } catch { throw httpError(502, "ai_invalid_response"); }
+    if (!out.title) out.title = answers.nome || answers.title || "Nova ficha";
+
+    // board padrão
+    let [board] = await db.select().from(boards).where(eq(boards.projectId, pid)).limit(1);
+    if (!board) [board] = await db.insert(boards).values({ projectId: pid, name: "Main" }).returning();
+    const existing = await db.select({ id: entries.id, title: entries.title }).from(entries).where(eq(entries.projectId, pid));
+    const entryByTitle = new Map(existing.map((e) => [e.title.trim().toLowerCase(), e.id]));
+    const nodeCount = (await db.select({ id: boardNodes.id }).from(boardNodes).where(eq(boardNodes.boardId, board.id))).length;
+
+    // cria a ficha + node
+    const metadata: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(out.metadata ?? {})) if (v != null && String(v).trim()) metadata[k] = v;
+    const [entry] = await db.insert(entries).values({
+      userId: req.user.sub, projectId: pid, type: type as EntryTypeName, title: out.title.trim(),
+      summary: out.summary ? String(out.summary) : null, importance: importance ?? 0, metadata,
+    }).returning();
+    void embedEntry(entry.id).catch(() => {});
+    const col = nodeCount % 5, row = Math.floor(nodeCount / 5);
+    const [node] = await db.insert(boardNodes).values({
+      projectId: pid, boardId: board.id, entryId: entry.id, kind: "card", x: 60 + col * 220, y: 60 + row * 130,
+    }).returning();
+    entryByTitle.set(entry.title.trim().toLowerCase(), entry.id);
+
+    // conexões com fichas existentes
+    const nodesByEntry = new Map((await db.select().from(boardNodes).where(eq(boardNodes.boardId, board.id))).filter((n) => n.entryId).map((n) => [n.entryId as string, n.id]));
+    const connections: { target: string; type: string }[] = [];
+    for (const r of out.relationships ?? []) {
+      if (!r?.target || !REL_VOCAB.includes(r.type as string)) continue;
+      const tgtEntry = entryByTitle.get(r.target.trim().toLowerCase());
+      if (!tgtEntry || tgtEntry === entry.id) continue;
+      if (r.type === "contem") {
+        try { await db.insert(memberships).values({ projectId: pid, containerId: entry.id, memberId: tgtEntry }); } catch { /* ok */ }
+      } else {
+        await db.insert(relationships).values({ projectId: pid, sourceId: entry.id, targetId: tgtEntry, type: r.type as string });
+        const tgtNode = nodesByEntry.get(tgtEntry);
+        if (tgtNode) await db.insert(boardEdges).values({ projectId: pid, boardId: board.id, sourceNodeId: node.id, targetNodeId: tgtNode, label: r.type as string });
+      }
+      connections.push({ target: r.target, type: r.type as string });
+    }
+
+    return { entry: { id: entry.id, title: entry.title, type: entry.type }, connections };
+  });
+
   // INGESTÃO EM LOTE: vários documentos → a IA cria as fichas (mesclando complementares) e as conexões
   app.post("/projects/:pid/import-batch", { bodyLimit: 60 * 1024 * 1024 }, async (req) => {
     const { pid } = req.params as { pid: string };
