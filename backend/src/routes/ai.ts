@@ -424,6 +424,9 @@ export async function aiRoutes(app: FastifyInstance) {
             "'details' = descrição RICA e fiel reunindo as informações relevantes daquela ficha no documento (até ~1600 caracteres). " +
             "'sourceHeading' = APENAS para fichas de tipo chapter/scene: copie EXATAMENTE a linha de título daquele capítulo/cena " +
             "como aparece no documento (para eu recuperar o texto integral). Para os outros tipos, null. " +
+            "IMPORTANTE: se o documento tiver capítulos ou cenas (ex.: 'Capítulo 1 – A Recusa', 'Cena 3 – ...'), crie UMA ficha " +
+            "do tipo chapter (ou scene) para CADA UM deles, sem pular nenhum. E NUNCA use o tipo chapter/scene para pessoas, " +
+            "sistemas ou lugares — personagens são character, e assim por diante. " +
             "Use SOMENTE os tipos permitidos. Em português.\n\nTIPOS PERMITIDOS E CAMPOS:\n" + tplHint,
         },
         { role: "user", content: `DOCUMENTO "${d.name}":\n\n${d.full.slice(0, 55000)}` },
@@ -480,8 +483,12 @@ export async function aiRoutes(app: FastifyInstance) {
       const items = g.indices.map((i) => perDoc[i]);
       const metadata: Record<string, unknown> = {};
       for (const it of items) for (const [k, v] of Object.entries(it.metadata ?? {})) if (v != null && String(v).trim() && !metadata[k]) metadata[k] = v;
+      // o tipo vem do VOTO dos itens extraídos (a canonicalização às vezes erra o tipo)
+      const counts = new Map<string, number>();
+      for (const it of items) counts.set(it.type, (counts.get(it.type) ?? 0) + 1);
+      const votedType = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
       return {
-        type: (allowed as string[]).includes(g.type) ? g.type : items[0].type, title: g.canonicalTitle.trim(),
+        type: votedType, title: g.canonicalTitle.trim(),
         summaries: items.map((it) => it.summary).filter((s): s is string => !!s).map(String),
         metadata,
         details: items.map((it) => it.details).filter((s): s is string => !!s).map(String),
