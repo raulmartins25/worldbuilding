@@ -1,6 +1,8 @@
 // Cliente OpenAI mínimo via fetch (sem SDK). Chave lida de OPENAI_API_KEY.
 const EMBED_MODEL = process.env.OPENAI_EMBED_MODEL ?? "text-embedding-3-small";
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+// modelo usado nas extrações de fidelidade (ingestão de documentos) — mais forte que o padrão
+export const EXTRACT_MODEL = process.env.OPENAI_EXTRACT_MODEL ?? "gpt-4o";
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
 const BASE = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
 
@@ -29,12 +31,12 @@ export async function embed(text: string): Promise<number[]> {
 
 export interface ChatMsg { role: "system" | "user" | "assistant"; content: string; }
 
-export async function chat(messages: ChatMsg[], opts: { temperature?: number; json?: boolean } = {}): Promise<string> {
+export async function chat(messages: ChatMsg[], opts: { temperature?: number; json?: boolean; model?: string } = {}): Promise<string> {
   const res = await fetch(`${BASE}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key()}` },
     body: JSON.stringify({
-      model: CHAT_MODEL,
+      model: opts.model ?? CHAT_MODEL,
       messages,
       temperature: opts.temperature ?? 0.4,
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),

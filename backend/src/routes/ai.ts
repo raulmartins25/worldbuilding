@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { entries, relationships, memberships, attributes, aiChecks, maps, boards, boardNodes, boardEdges } from "../db/schema";
 import { httpError, requireEntry, requireProject } from "../lib/guard";
-import { aiEnabled, embed, chat, chatStream, generateImage } from "../lib/openai";
+import { aiEnabled, embed, chat, chatStream, generateImage, EXTRACT_MODEL } from "../lib/openai";
 import { embedEntry, buildEntryText } from "../lib/embedding";
 import mammoth from "mammoth";
 
@@ -410,7 +410,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const { text: world } = await buildProjectContext(pid);
 
     // 2) EXTRAÇÃO POR DOCUMENTO — uma chamada por doc, sem truncar (foco e fidelidade)
-    type Ext = { type: string; title: string; summary?: string; metadata?: Record<string, unknown>; details?: string };
+    type Ext = { type: string; title: string; summary?: string; metadata?: Record<string, unknown>; details?: string; sourceHeading?: string; verbatim?: string };
     const perDoc: Ext[] = [];
     for (const d of docs) {
       const raw = await chat([
@@ -419,17 +419,33 @@ export async function aiRoutes(app: FastifyInstance) {
           content:
             "Você extrai fichas de um mundo de fantasia a partir de UM documento. Encontre TODAS as fichas dos TIPOS permitidos " +
             "descritas nele — seja EXAUSTIVO e FIEL: NÃO invente, NÃO resuma demais e NÃO omita personagens/elementos citados. " +
-            'Responda SOMENTE JSON: {"entities":[{"type","title","summary","metadata":{<campos do template>},"details"}]}. ' +
+            'Responda SOMENTE JSON: {"entities":[{"type","title","summary","metadata":{<campos do template>},"details","sourceHeading"}]}. ' +
             "'summary' = UMA frase; 'metadata' = os campos do template preenchidos com o que o doc diz; " +
             "'details' = descrição RICA e fiel reunindo as informações relevantes daquela ficha no documento (até ~1600 caracteres). " +
+            "'sourceHeading' = APENAS para fichas de tipo chapter/scene: copie EXATAMENTE a linha de título daquele capítulo/cena " +
+            "como aparece no documento (para eu recuperar o texto integral). Para os outros tipos, null. " +
             "Use SOMENTE os tipos permitidos. Em português.\n\nTIPOS PERMITIDOS E CAMPOS:\n" + tplHint,
         },
         { role: "user", content: `DOCUMENTO "${d.name}":\n\n${d.full.slice(0, 55000)}` },
-      ], { json: true, temperature: 0.2 });
+      ], { json: true, temperature: 0.2, model: EXTRACT_MODEL });
+      let ents: Ext[] = [];
       try {
         const p = JSON.parse(raw) as { entities?: Ext[] };
-        for (const e of p.entities ?? []) if (e?.title && e?.type && (allowed as string[]).includes(e.type)) perDoc.push(e);
-      } catch { /* ignora doc que a IA não devolveu JSON */ }
+        ents = (p.entities ?? []).filter((e) => e?.title && e?.type && (allowed as string[]).includes(e.type));
+      } catch { ents = []; }
+
+      // capítulos/cenas: recupera o TEXTO INTEGRAL (verbatim) fatiando o doc entre os cabeçalhos
+      const chapters = ents
+        .filter((e) => MANUSCRIPT_TYPES.has(e.type) && e.sourceHeading)
+        .map((e) => ({ e, idx: d.full.toLowerCase().indexOf(String(e.sourceHeading).trim().toLowerCase()) }))
+        .filter((p) => p.idx >= 0)
+        .sort((a, b) => a.idx - b.idx);
+      for (let i = 0; i < chapters.length; i++) {
+        const start = chapters[i].idx;
+        const end = i + 1 < chapters.length ? chapters[i + 1].idx : d.full.length;
+        chapters[i].e.verbatim = d.full.slice(start, end).trim().slice(0, 40000);
+      }
+      perDoc.push(...ents);
     }
     if (perDoc.length === 0) throw httpError(422, "no_entities_extracted");
     const norm = (s: string) => s.trim().toLowerCase();
@@ -459,7 +475,7 @@ export async function aiRoutes(app: FastifyInstance) {
     for (let i = 0; i < perDoc.length; i++) if (!seen.has(i)) { groups.push({ canonicalTitle: perDoc[i].title, type: perDoc[i].type, indices: [i] }); seen.add(i); }
 
     // 3) monta as fichas consolidadas a partir dos grupos (soma summaries/metadata/details)
-    interface Merged { type: string; title: string; summaries: string[]; metadata: Record<string, unknown>; details: string[]; }
+    interface Merged { type: string; title: string; summaries: string[]; metadata: Record<string, unknown>; details: string[]; verbatim: string[]; }
     const mergedList: Merged[] = groups.slice(0, 90).map((g) => {
       const items = g.indices.map((i) => perDoc[i]);
       const metadata: Record<string, unknown> = {};
@@ -469,6 +485,7 @@ export async function aiRoutes(app: FastifyInstance) {
         summaries: items.map((it) => it.summary).filter((s): s is string => !!s).map(String),
         metadata,
         details: items.map((it) => it.details).filter((s): s is string => !!s).map(String),
+        verbatim: items.map((it) => it.verbatim).filter((s): s is string => !!s).map(String),
       };
     });
 
@@ -488,11 +505,14 @@ export async function aiRoutes(app: FastifyInstance) {
       const key = norm(m.title);
       let entryId = entryByTitle.get(key);
       if (!entryId) {
+        // capítulo/cena → manuscrito VERBATIM do documento; demais tipos → descrição rica extraída
+        const verbatimText = m.verbatim.join("\n\n").slice(0, 40000);
         const detailText = m.details.join("\n\n").slice(0, 14000);
+        const bodyText = MANUSCRIPT_TYPES.has(m.type) && verbatimText ? verbatimText : detailText;
         const [entry] = await db.insert(entries).values({
           userId: req.user.sub, projectId: pid, type: m.type as EntryTypeName, title: m.title,
           summary: m.summaries[0] ?? null, metadata: m.metadata,
-          body: detailText ? textToDoc(detailText) : {}, // texto-fonte guardado na ficha (fica indexado)
+          body: bodyText ? textToDoc(bodyText) : {}, // texto-fonte guardado na ficha (fica indexado)
         }).returning();
         entryId = entry.id;
         entryByTitle.set(key, entryId);
