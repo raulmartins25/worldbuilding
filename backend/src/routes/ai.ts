@@ -290,12 +290,16 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post("/projects/:pid/wizard/options", async (req) => {
     const { pid } = req.params as { pid: string };
     await requireProject(req.user.sub, pid);
-    const { question, answers } = z.object({
+    const { question, answers, exclude } = z.object({
       question: z.string().min(1),
       answers: z.record(z.string()).default({}),
+      exclude: z.array(z.string()).default([]),
     }).parse(req.body);
     const { text: world } = await buildProjectContext(pid);
     const ans = Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join("\n") || "(nada ainda)";
+    const excludeTxt = exclude.length
+      ? `\n\nO autor NÃO gostou destas opções já mostradas — traga ideias REALMENTE DIFERENTES (outro ângulo, outro tom), não variações delas:\n- ${exclude.join("\n- ")}`
+      : "";
     const raw = await chat([
       {
         role: "system",

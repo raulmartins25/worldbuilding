@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { IconWand, IconX, IconArrowRight, IconCheck } from "@tabler/icons-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IconWand, IconX, IconArrowRight, IconCheck, IconRefresh } from "@tabler/icons-react";
 import { api } from "../lib/api";
 import { type EntryType } from "../lib/types";
 import { typeMeta } from "../lib/entryTypes";
@@ -100,21 +100,34 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
   const [phase, setPhase] = useState<"asking" | "committing" | "sectionDone" | "finished">("asking");
   const [created, setCreated] = useState<CreatedCard[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOpts, setSelectedOpts] = useState<Set<number>>(new Set());
 
   const section = SECTIONS[si];
   const question = section?.questions[qi];
 
-  const fetchOptions = useCallback(async () => {
-    if (!question) return;
-    setLoadingOpts(true); setOptions([]); setError(null);
+  // refs para a busca de opções não re-disparar em loop, e cache por pergunta (voltar não recarrega)
+  const answersRef = useRef(answers);
+  const optionsRef = useRef(options);
+  const cacheRef = useRef<Record<string, string[]>>({});
+  useEffect(() => { answersRef.current = answers; }, [answers]);
+  useEffect(() => { optionsRef.current = options; }, [options]);
+
+  const loadOptions = useCallback(async (force: boolean) => {
+    const q = SECTIONS[si]?.questions[qi];
+    if (!q) return;
+    const key = `${si}:${qi}`;
+    if (!force && cacheRef.current[key]) { setOptions(cacheRef.current[key]); setSelectedOpts(new Set()); return; }
+    const exclude = force ? [...optionsRef.current] : []; // ao atualizar, pede opções diferentes das mostradas
+    setLoadingOpts(true); setError(null); setOptions([]); setSelectedOpts(new Set());
     try {
-      const r = await api.post<{ options: string[] }>(`/projects/${projectId}/wizard/options`, { question: question.q, answers });
-      setOptions(r.options ?? []);
+      const r = await api.post<{ options: string[] }>(`/projects/${projectId}/wizard/options`, { question: q.q, answers: answersRef.current, exclude });
+      const opts = r.options ?? [];
+      cacheRef.current[key] = opts;
+      setOptions(opts);
     } catch { setOptions([]); } finally { setLoadingOpts(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, si, qi]);
 
-  useEffect(() => { if (phase === "asking") void fetchOptions(); }, [phase, fetchOptions]);
+  useEffect(() => { if (phase === "asking") void loadOptions(false); }, [phase, loadOptions]);
 
   async function commitSection(finalAnswers: Record<string, string>) {
     setPhase("committing"); setError(null);
@@ -142,13 +155,27 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
     advanceSection();
   }
 
-  function answer(value: string) {
-    const v = value.trim();
-    if (!v) return;
-    const next = { ...answers, [question.field]: v };
-    setAnswers(next); setCustom("");
-    if (qi + 1 < section.questions.length) { setQi(qi + 1); }
+  // combina as opções marcadas (+ o texto livre) numa resposta só
+  function submit() {
+    const picks = [...selectedOpts].sort((a, b) => a - b).map((i) => options[i]).filter(Boolean);
+    const c = custom.trim();
+    const value = [...picks, ...(c ? [c] : [])].join(" + ");
+    if (!value) return;
+    const next = { ...answers, [question.field]: value };
+    setAnswers(next); setCustom(""); setSelectedOpts(new Set());
+    // o contexto mudou → as opções já geradas das perguntas seguintes desta etapa ficam obsoletas
+    for (let k = qi + 1; k < section.questions.length; k++) delete cacheRef.current[`${si}:${k}`];
+    if (qi + 1 < section.questions.length) setQi(qi + 1);
     else void commitSection(next);
+  }
+
+  // volta uma pergunta (dentro da etapa) preservando a resposta para correção
+  function goBack() {
+    if (qi === 0) return;
+    const prev = section.questions[qi - 1];
+    setQi(qi - 1);
+    setCustom(answers[prev.field] ?? "");
+    setSelectedOpts(new Set());
   }
 
   const totalSteps = SECTIONS.length;
@@ -179,24 +206,43 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
 
           {phase === "asking" && question && (
             <>
-              <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 14 }}>{question.q}</div>
+              <div className="row" style={{ marginBottom: 6, alignItems: "flex-start", gap: 10 }}>
+                <div className="grow" style={{ fontSize: 18, fontWeight: 500 }}>{question.q}</div>
+                <button onClick={() => void loadOptions(true)} disabled={loadingOpts} title="gerar outras opções"
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13 }}>
+                  <IconRefresh size={15} /> Atualizar
+                </button>
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Pode marcar mais de uma — elas se combinam.</div>
               <div className="stack" style={{ gap: 8 }}>
                 {loadingOpts && <div className="muted">pensando em opções…</div>}
-                {options.map((o, i) => (
-                  <button key={i} onClick={() => answer(o)} style={{ textAlign: "left", padding: "10px 12px", borderRadius: 10, fontSize: 14, lineHeight: 1.4 }}>
-                    {o}
-                  </button>
-                ))}
+                {options.map((o, i) => {
+                  const on = selectedOpts.has(i);
+                  return (
+                    <button key={i}
+                      onClick={() => setSelectedOpts((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+                      style={{
+                        textAlign: "left", padding: "10px 12px", borderRadius: 10, fontSize: 14, lineHeight: 1.4,
+                        display: "flex", gap: 9, alignItems: "flex-start",
+                        border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
+                        background: on ? "color-mix(in srgb, var(--accent) 12%, var(--panel))" : "var(--panel)",
+                      }}>
+                      <span style={{ flexShrink: 0, width: 16, marginTop: 2 }}>{on && <IconCheck size={16} color="var(--accent)" />}</span>
+                      <span>{o}</span>
+                    </button>
+                  );
+                })}
               </div>
               <div className="row" style={{ marginTop: 12, gap: 8 }}>
-                <input className="grow" placeholder="Escrever o meu…" value={custom} onChange={(e) => setCustom(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") answer(custom); }} />
-                <button className="primary" onClick={() => answer(custom)} disabled={!custom.trim()} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  Usar <IconArrowRight size={15} />
+                <input className="grow" placeholder="Escrever o meu (soma às marcadas)…" value={custom} onChange={(e) => setCustom(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+                <button className="primary" onClick={submit} disabled={selectedOpts.size === 0 && !custom.trim()} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  Continuar <IconArrowRight size={15} />
                 </button>
               </div>
               <div className="row" style={{ marginTop: 12 }}>
-                <span className="muted grow" style={{ fontSize: 12 }}>Pergunta {qi + 1} de {section.questions.length}</span>
+                <button onClick={goBack} disabled={qi === 0} title="voltar e corrigir" style={{ fontSize: 12, padding: "3px 10px" }}>← Voltar</button>
+                <span className="muted grow" style={{ fontSize: 12, textAlign: "center" }}>Pergunta {qi + 1} de {section.questions.length}</span>
                 <button onClick={skipSection} style={{ fontSize: 12, padding: "3px 10px", color: "var(--muted)" }}>Pular esta etapa →</button>
               </div>
               {error && <div style={{ color: "var(--danger)", marginTop: 10 }}>{error}</div>}
