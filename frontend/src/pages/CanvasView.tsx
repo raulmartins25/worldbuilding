@@ -8,7 +8,7 @@ import { api } from "../lib/api";
 import { type Entry } from "../lib/types";
 import { typeMeta, relLabel } from "../lib/entryTypes";
 import { EntryIcon } from "../lib/EntryIcon";
-import { IconSparkles, IconArrowUpRight, IconX } from "@tabler/icons-react";
+import { IconSparkles, IconArrowUpRight, IconX, IconTrash } from "@tabler/icons-react";
 import { useIsMobile } from "../lib/useIsMobile";
 import { NewCardModal, type NewCardData } from "./NewCardModal";
 import { useSearchParams } from "react-router-dom";
@@ -236,6 +236,7 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
   const [gEdges, setGEdges, onGEdgesChange] = useEdgesState<Edge>([]);
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: GNode[]; edges: GEdge[] }>({ nodes: [], edges: [] });
   const [rfi, setRfi] = useState<ReactFlowInstance | null>(null);
@@ -530,6 +531,58 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => onNodesChange(changes), [onNodesChange]);
 
+  const onSelectionChange = useCallback(({ nodes: sel }: { nodes: Node[] }) => setSelectedIds(sel.map((n) => n.id)), []);
+  const clearSelection = () => { setSelectedIds([]); setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n))); };
+
+  // remove os cards/molduras selecionados DO QUADRO (mantém as fichas)
+  async function removeSelectedFromBoard() {
+    const ids = selectedIds;
+    if (ids.length === 0) return;
+    await Promise.all(ids.map((id) => api.del(`/board-nodes/${id}`).catch(() => {})));
+    clearSelection();
+    await load();
+  }
+
+  // exclui as FICHAS dos cards selecionados (cascata) + remove molduras selecionadas
+  async function deleteSelected() {
+    const sel = nodesRef.current.filter((n) => selectedIds.includes(n.id));
+    const entryIds = [...new Set(sel.map((n) => (n.data as CardData).entryId).filter((e): e is string => !!e))];
+    const frameIds = sel.filter((n) => n.type === "frame").map((n) => n.id);
+    if (entryIds.length === 0 && frameIds.length === 0) return;
+    const parts = [];
+    if (entryIds.length) parts.push(`${entryIds.length} ficha${entryIds.length === 1 ? "" : "s"}`);
+    if (frameIds.length) parts.push(`${frameIds.length} moldura${frameIds.length === 1 ? "" : "s"}`);
+    if (!confirm(`Excluir ${parts.join(" e ")}? Remove os cards, relações e menções. Não dá pra desfazer.`)) return;
+    await Promise.all([
+      ...entryIds.map((eid) => api.del(`/entries/${eid}`).catch(() => {})),
+      ...frameIds.map((fid) => api.del(`/board-nodes/${fid}`).catch(() => {})),
+    ]);
+    clearSelection();
+    await load();
+    window.dispatchEvent(new Event("loregrid:refresh")); // atualiza a sidebar
+  }
+
+  // cria uma moldura ao redor dos cards selecionados
+  async function frameSelected() {
+    if (!boardId) return;
+    const sel = nodesRef.current.filter((n) => selectedIds.includes(n.id) && n.type === "entryCard");
+    if (sel.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of sel) {
+      const w = n.measured?.width ?? 200, h = n.measured?.height ?? 72;
+      minX = Math.min(minX, n.position.x); minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + w); maxY = Math.max(maxY, n.position.y + h);
+    }
+    const PAD = 28, HEAD = 20;
+    await api.post(`/boards/${boardId}/nodes`, {
+      kind: "frame", x: minX - PAD, y: minY - PAD - HEAD,
+      width: (maxX - minX) + PAD * 2, height: (maxY - minY) + PAD * 2 + HEAD,
+      style: { label: "Grupo", color: FRAME_COLOR },
+    });
+    clearSelection();
+    await load();
+  }
+
   // arrastar ficha da árvore (sidebar) e soltar no quadro → plota o card (+ membros se contêiner) na posição do drop
   const onDragOver = useCallback((e: DragEvent) => {
     if (e.dataTransfer.types.includes(DND_ENTRY)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }
@@ -655,6 +708,19 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
         </div>
       )}
 
+      {/* barra de ações da seleção (Make-style: seleciona no esquerdo → age aqui) */}
+      {lens === "quadro" && selectedIds.length > 0 && (
+        <div className="row" style={{ position: "absolute", bottom: 18, left: "50%", transform: "translateX(-50%)", zIndex: 8, background: "var(--panel)", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "6px 8px 6px 14px", boxShadow: "0 6px 24px rgba(20,24,40,.18)", gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{selectedIds.length} selecionado{selectedIds.length === 1 ? "" : "s"}</span>
+          <button onClick={frameSelected} title="agrupar numa moldura" style={{ fontSize: 13 }}>▦ Agrupar</button>
+          <button onClick={removeSelectedFromBoard} title="tira do quadro, mantém a ficha" style={{ fontSize: 13 }}>Remover do quadro</button>
+          <button onClick={deleteSelected} title="exclui as fichas de vez" style={{ fontSize: 13, color: "#fff", background: "var(--danger)", borderColor: "transparent", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <IconTrash size={15} /> Excluir
+          </button>
+          <button onClick={clearSelection} title="limpar seleção" style={{ padding: "4px 6px", border: "none", background: "transparent", color: "var(--muted)" }}><IconX size={16} /></button>
+        </div>
+      )}
+
       {/* camada da lente ativa — remonta ao trocar (key) → transição suave (.lens-fade, respeita reduce-motion) */}
       <div key={lens} className="lens-fade" style={{ position: "absolute", inset: 0, zIndex: 1 }}>
         {lens === "quadro" && (
@@ -664,6 +730,7 @@ export function CanvasView({ projectId, projectName, lens, onLens }: { projectId
             onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop}
             onNodesDelete={onNodesDelete} onEdgesDelete={onEdgesDelete} onConnect={onConnect}
             onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
+            onSelectionChange={onSelectionChange}
             onInit={setRfi}
             elevateNodesOnSelect={false}
             zoomOnDoubleClick={!mobile}
