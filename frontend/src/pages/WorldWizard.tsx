@@ -11,26 +11,78 @@ interface Section { key: string; type: EntryType; importance: number; title: str
 const SECTIONS: Section[] = [
   { key: "mundo", type: "lore", importance: 0, title: "O Mundo", questions: [
     { field: "tom", q: "Que tom define o seu mundo?" },
+    { field: "genero", q: "Que gênero mais combina com ele?" },
     { field: "conflito", q: "Qual é a grande tensão central do mundo?" },
     { field: "epoca", q: "Em que época ou nível de civilização ele vive?" },
     { field: "geografia", q: "Que paisagem domina o mundo?" },
+    { field: "singular", q: "O que torna esse mundo único, diferente de qualquer outro?" },
+  ] },
+  { key: "historia", type: "lore", importance: 0, title: "História & Mito", questions: [
+    { field: "origem", q: "Como o mundo (ou a vida nele) começou, segundo o mito?" },
+    { field: "cataclismo", q: "Que grande evento do passado ainda assombra o presente?" },
+    { field: "era_atual", q: "Que era o mundo vive agora?" },
+    { field: "segredo", q: "Que verdade histórica foi esquecida ou escondida?" },
+  ] },
+  { key: "reino", type: "region", importance: 0, title: "Reino Principal", questions: [
+    { field: "nome", q: "Qual o nome do reino ou região central da história?" },
+    { field: "governo", q: "Como ele é governado?" },
+    { field: "clima", q: "Que clima e terreno predominam ali?" },
+    { field: "povo", q: "Como é o povo que vive nele?" },
+    { field: "tensao", q: "Que conflito interno ferve nesse reino?" },
   ] },
   { key: "magia", type: "magic_system", importance: 0, title: "Sistema de Magia", questions: [
     { field: "fonte", q: "De onde vem o poder mágico?" },
     { field: "custo", q: "Qual é o preço de usar magia?" },
     { field: "quem", q: "Quem consegue usar magia?" },
+    { field: "regras", q: "Qual a regra mais importante da magia?" },
     { field: "limite", q: "Qual a maior limitação da magia?" },
+    { field: "manifestacao", q: "Como a magia se manifesta visualmente?" },
+  ] },
+  { key: "religiao", type: "religion", importance: 0, title: "Religião & Panteão", questions: [
+    { field: "divindade", q: "Qual força ou divindade é mais reverenciada?" },
+    { field: "dogma", q: "Qual a crença central dessa fé?" },
+    { field: "simbolo", q: "Qual o símbolo ou ritual que a representa?" },
+    { field: "relacao_magia", q: "Como a religião enxerga a magia?" },
+  ] },
+  { key: "faccao", type: "faction", importance: 0, title: "Facção Dominante", questions: [
+    { field: "nome", q: "Qual o nome da facção mais influente?" },
+    { field: "lider", q: "Quem a lidera?" },
+    { field: "objetivo", q: "O que ela quer, acima de tudo?" },
+    { field: "metodo", q: "Como ela busca isso?" },
+    { field: "inimigo", q: "Quem é o maior inimigo dela?" },
   ] },
   { key: "protagonista", type: "character", importance: 4, title: "Protagonista", questions: [
     { field: "nome", q: "Quem é o seu protagonista? (nome ou arquétipo)" },
     { field: "objetivo", q: "O que move esse protagonista?" },
     { field: "ferida", q: "Que ferida do passado o marca?" },
+    { field: "medo", q: "Qual o maior medo dele?" },
     { field: "relacao_magia", q: "Qual a relação dele com a magia do mundo?" },
+    { field: "arco", q: "Que transformação ele viverá na história?" },
+  ] },
+  { key: "antagonista", type: "character", importance: 4, title: "Antagonista", questions: [
+    { field: "nome", q: "Quem se opõe ao protagonista? (nome ou papel)" },
+    { field: "motivacao", q: "Por que o antagonista acredita estar certo?" },
+    { field: "metodo", q: "Como ele age para conseguir o que quer?" },
+    { field: "vinculo", q: "Que laço (passado ou presente) o liga ao protagonista?" },
+    { field: "forca", q: "Qual a maior força ou recurso dele?" },
   ] },
   { key: "coadjuvante", type: "character", importance: 2, title: "Coadjuvante", repeatable: true, questions: [
     { field: "nome", q: "Quem é esse coadjuvante? (nome ou papel)" },
     { field: "relacao_protagonista", q: "Qual a relação dele com o protagonista?" },
     { field: "funcao", q: "Que função ele cumpre na história?" },
+    { field: "segredo", q: "Que segredo ou peculiaridade ele carrega?" },
+  ] },
+  { key: "criatura", type: "creature", importance: 0, title: "Criatura Emblemática", questions: [
+    { field: "nome", q: "Que criatura marca esse mundo?" },
+    { field: "habitat", q: "Onde ela vive?" },
+    { field: "perigo", q: "Por que ela é temida (ou reverenciada)?" },
+    { field: "relacao", q: "Como ela se relaciona com a magia ou o povo?" },
+  ] },
+  { key: "artefato", type: "item", importance: 0, title: "Artefato Central", questions: [
+    { field: "nome", q: "Qual objeto tem peso na trama?" },
+    { field: "poder", q: "Que poder ou propriedade ele guarda?" },
+    { field: "origem", q: "De onde ele veio?" },
+    { field: "cobica", q: "Quem o cobiça e por quê?" },
   ] },
 ];
 
@@ -85,6 +137,11 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
     else setPhase("finished");
   }
 
+  function skipSection() {
+    setError(null);
+    advanceSection();
+  }
+
   function answer(value: string) {
     const v = value.trim();
     if (!v) return;
@@ -137,6 +194,10 @@ export function WorldWizard({ projectId, projectName, onClose, onDone }: {
                 <button className="primary" onClick={() => answer(custom)} disabled={!custom.trim()} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                   Usar <IconArrowRight size={15} />
                 </button>
+              </div>
+              <div className="row" style={{ marginTop: 12 }}>
+                <span className="muted grow" style={{ fontSize: 12 }}>Pergunta {qi + 1} de {section.questions.length}</span>
+                <button onClick={skipSection} style={{ fontSize: 12, padding: "3px 10px", color: "var(--muted)" }}>Pular esta etapa →</button>
               </div>
               {error && <div style={{ color: "var(--danger)", marginTop: 10 }}>{error}</div>}
             </>
